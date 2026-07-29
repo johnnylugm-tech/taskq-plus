@@ -443,14 +443,14 @@ def test_fr02_timeout_yields_exit_4(isolated_taskq_home):
 
     # Guard is on the INPUT (sleep_seconds=5, task_timeout=1) so the
     # assertions below are unconditional on the production result.
-    if sleep_seconds == 5 and task_timeout == 1:
-        # AC2-timeout-status — the task record must record status=timeout.
-        assert result.task_status == "timeout"
-        # AC2-timeout-exit-4 — single-task run must exit 4.
-        assert result.exit_code == 4
-        # AC2-task-timeout-elapsed-lt-budget — executor must not blow past
-        # the budget (sleep should be killed at ~1s, not 5s).
-        assert result.elapsed_seconds < task_timeout + 2
+    assert sleep_seconds == 5 and task_timeout == 1
+    # AC2-timeout-status — the task record must record status=timeout.
+    assert result.task_status == "timeout"
+    # AC2-timeout-exit-4 — single-task run must exit 4.
+    assert result.exit_code == 4
+    # AC2-task-timeout-elapsed-lt-budget — executor must not blow past
+    # the budget (sleep should be killed at ~1s, not 5s).
+    assert result.elapsed_seconds < task_timeout + 2
 
 
 # -------------------------------------------------------------------
@@ -483,26 +483,24 @@ def test_fr02_stdout_tail_truncated_2000_chars(isolated_taskq_home):
 
     submit_result = _run_submit(command)
 
-    # Guard is on the INPUT (command produces 3000 chars, tail_max==2000)
-    # so the assertions below are unconditional on the production result.
-    if command and tail_max == 2000:
-        assert submit_result.exit_code == 0
-        assert len(submit_result.task_id_str) == 8
+    assert submit_result.exit_code == 0, submit_result.stderr
+    assert len(submit_result.task_id_str) == 8
 
-        task_id = submit_result.task_id_str
+    task_id = submit_result.task_id_str
 
-        run_result = _run_run_cli(task_id)
+    run_result = _run_run_cli(task_id)
 
-        task_record = _tasks_map(isolated_taskq_home).get(task_id, {})
-        stdout_tail = task_record.get("stdout_tail", "")
+    task_record = _tasks_map(isolated_taskq_home).get(task_id, {})
+    stdout_tail = task_record.get("stdout_tail", "")
 
-        result = SimpleNamespace(
-            exit_code=run_result.exit_code,
-            stdout_tail=stdout_tail,
-        )
+    result = SimpleNamespace(
+        exit_code=run_result.exit_code,
+        stdout_tail=stdout_tail,
+    )
 
-        # AC2-tail-len-cap — never more than 2000 chars.
-        assert len(result.stdout_tail) <= tail_max
-        # AC2-tail-is-suffix — raw_output is 'a' * 3000, so the tail
-        # is 'a' * 2000.
-        assert result.stdout_tail == raw_output[-2000:]
+    assert result.exit_code == 0
+    # AC2-tail-len-cap — never more than 2000 chars.
+    assert len(result.stdout_tail) <= tail_max
+    # AC2-tail-is-suffix — raw_output is 'a' * 3000, so the tail
+    # is 'a' * 2000.
+    assert result.stdout_tail == raw_output[-2000:]
