@@ -1,8 +1,8 @@
 # Harness Methodology — Session Handover
 
-**Checkpoint**: `P3-entry-20260729`  
+**Checkpoint**: `P3-mid-20260729`  
 **Phase**: P3 — Implementation  
-**Generated**: 2026-07-29T19:55:29Z
+**Generated**: 2026-07-29T21:19:26Z
 
 > ⚠️  **開始下一個工作階段前，請先執行 `/compact` 壓縮上下文**，再從「接下來的工作」繼續。
 
@@ -31,7 +31,7 @@ git clone --recurse-submodules https://github.com/johnnylugm-tech/taskq-plus.git
 git log --oneline -3
 
 # Confirm FSM state
-cat .methodology/state.json   # expected: phase=3 state=RUNNING
+cat .methodology/state.json   # expected: phase=3 state=RUNNING last_gate=1 last_fr=FR-04
 
 # Read active plan
 cat .methodology/phase3_plan.md
@@ -40,30 +40,67 @@ cat .methodology/phase3_plan.md
 | 欄位 | 值 |
 |------|----|
 | Remote | `https://github.com/johnnylugm-tech/taskq-plus.git` |
-| Branch | `main` |
-| State | `phase=3 state=RUNNING` |
+| Branch | `refactor/fr-04-improve` |
+| State | `phase=3 state=RUNNING last_gate=1 last_fr=FR-04` |
 | Plan | `.methodology/phase3_plan.md` |
 
 ---
 
 ## 任務背景
 
-Phase transition from Phase 2 to Phase 3.
+P3 Implementation in progress (≥50% milestone). 4/8 FRs done.
 
 ## 目前執行狀況
 
-Phase 2 completed. Ready to begin Phase 3.
+4/8 FRs Gate 1 PASS [FR-01,FR-02,FR-03,FR-04]. TDD cycles complete for passing FRs.
+
+**A/B Session Results:**
+  - None / preflight-probe: **complete**
+  - FR-01 / developer: **complete**
+  - ? / tool:amend-sab: **COMPLETED**
+  - FR-02 / developer: **ERROR**
+  - FR-03 / developer: **complete**
+  - FR-04 / developer: **complete**
+
+**Recently Committed Files:**
+  - `.methodology/.gate1_scores.json`
+  - `.methodology/decision_logs/2026-07-29/GATE_3_0088e882.yaml`
+  - `.methodology/effort_metrics.db`
+  - `.methodology/fr_progress.json`
+  - `.methodology/gate1_result.json`
+  - `.methodology/gate_results/gate1/FR-04.json`
+  - `.methodology/gate_timestamps.jsonl`
+  - `.methodology/quality_manifest.json`
+  - `.methodology/state.json`
+  - `00-summary/Phase3_STAGE_PASS.md`
+  - `CLAUDE.md`
+  - `03-development/src/taskq_plus/service/cache.py`
+  - `03-development/src/taskq_plus/storage/cache_store.py`
+  - `03-development/src/taskq_plus/cli.py`
+  - `03-development/tests/test_fr04.py`
+  - `.methodology/decision_logs/2026-07-29/GATE_3_c5627188.yaml`
+  - `.methodology/gate_results/gate1/FR-03.json`
+  - `03-development/src/taskq_plus/service/breaker.py`
+  - `03-development/src/taskq_plus/storage/breaker_store.py`
+  - `03-development/src/taskq_plus/service/executor.py`
 
 ## 接下來的工作
 
-1. Follow SKILL.md §0.1 Phase 3 entry checklist
-2. Read the Phase 3 plan and execute
+1. Complete remaining 4 FR(s): FR-05, FR-06, FR-07, FR-08
+2. Ensure each FR has passing unit tests (TDD)
+3. When all FRs done → `push-milestone --type p3-pre-gate2`
 
 ## 注意事項
 
 - 100% follow SKILL.md
 - Do NOT commit `.sessi-work/` or `.methodology/` runtime artifacts
 - Git failures are warnings — they never block the pipeline
+
+## 附加資訊
+
+- **fr_done**: 4
+- **fr_total**: 8
+- **remaining_frs**: FR-05, FR-06, FR-07, FR-08
 
 ---
 *由 `HandoverGenerator` 自動生成。下次 push 時此檔案將被覆寫。*
