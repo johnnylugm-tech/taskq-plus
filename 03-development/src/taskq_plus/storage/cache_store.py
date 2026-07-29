@@ -22,37 +22,41 @@ from taskq_plus.config import config
 from taskq_plus.storage.atomic import atomic_write_json
 
 
+_CACHE_FILENAME = "cache.json"
+_CACHE_VERSION = 1
+
 # AC-FR-04.4 / SPEC.md §3 FR-04: concurrent ``service.cache.store``
 # calls (from FR-02's ``ThreadPoolExecutor``) serialise their
 # read-modify-write on this module-level ``threading.Lock`` so no
 # entry is lost and ``cache.json`` stays parseable.
-_lock = threading.Lock()
+_cache_write_lock = threading.Lock()
 
 
 def _path() -> Path:
     """Return the canonical cache.json path under ``$TASKQ_HOME``."""
-    return config().task_home / "cache.json"
+    return config().task_home / _CACHE_FILENAME
 
 
-def _read_envelope() -> dict[str, Any]:
-    """Return the raw on-disk envelope; default when absent / unparseable.
+def _empty_envelope() -> dict[str, Any]:
+    """Return a fresh, empty SAD §3.4 cache envelope."""
+    return {"version": _CACHE_VERSION, "entries": {}}
+
+
+def _read_envelope(path: Path) -> dict[str, Any]:
+    """Return the normalised envelope; default when absent / unparseable.
 
     Citations:
     - SAD §3.4: missing file = ``{"version": 1, "entries": {}}``.
     """
-    path = _path()
-    if not path.exists():
-        return {"version": 1, "entries": {}}
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
-        return {"version": 1, "entries": {}}
-    if not isinstance(data, dict):
-        return {"version": 1, "entries": {}}
-    entries = data.get("entries")
+        return _empty_envelope()
+
+    entries = data.get("entries") if isinstance(data, dict) else None
     if not isinstance(entries, dict):
-        entries = {}
-    return {"version": 1, "entries": entries}
+        return _empty_envelope()
+    return {"version": _CACHE_VERSION, "entries": entries}
 
 
 def load() -> dict[str, dict[str, Any]]:
@@ -62,7 +66,7 @@ def load() -> dict[str, dict[str, Any]]:
     - SAD §3.4: the on-disk shape is ``{version, entries}``; this
       returns only ``entries`` for the caller's convenience.
     """
-    return _read_envelope().get("entries", {})
+    return _read_envelope(_path())["entries"]
 
 
 def get(sig: str) -> dict[str, Any] | None:
@@ -84,11 +88,10 @@ def put(sig: str, result: dict[str, Any]) -> None:
     - SAD §3.4: ``cached_at`` is POSIX epoch seconds (``time.time()``).
     """
     path = _path()
-    with _lock:
-        data = _read_envelope()
-        entries = data.setdefault("entries", {})
-        if not isinstance(entries, dict):
-            entries = {}
-            data["entries"] = entries
-        entries[sig] = {"result": result, "cached_at": time.time()}
-        atomic_write_json(path, data)
+    with _cache_write_lock:
+        envelope = _read_envelope(path)
+        envelope["entries"][sig] = {
+            "result": result,
+            "cached_at": time.time(),
+        }
+        atomic_write_json(path, envelope)

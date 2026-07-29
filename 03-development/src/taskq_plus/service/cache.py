@@ -19,9 +19,20 @@ from typing import Any
 from taskq_plus.storage import cache_store
 
 
-def _resolve_ttl() -> float:
+_DEFAULT_CACHE_TTL_SECONDS = "3600"
+_DONE_STATUS = "done"
+
+
+def _resolve_ttl_seconds() -> float:
     """Return ``$TASKQ_CACHE_TTL`` as float seconds (default 3600)."""
-    return float(os.environ.get("TASKQ_CACHE_TTL", "3600"))
+    return float(
+        os.environ.get("TASKQ_CACHE_TTL", _DEFAULT_CACHE_TTL_SECONDS)
+    )
+
+
+def _is_done_result(result: object) -> bool:
+    """Return whether ``result`` is a replayable successful outcome."""
+    return isinstance(result, dict) and result.get("status") == _DONE_STATUS
 
 
 def cache_key(command: str) -> str:
@@ -41,19 +52,20 @@ def lookup(command: str) -> dict[str, Any] | None:
     - AC-FR-04.2: 同簽名且結果為 ``done`` 的最近執行在
       ``TASKQ_CACHE_TTL`` 秒內 → 直接回放.
     """
-    sig = cache_key(command)
-    entry = cache_store.get(sig)
+    signature = cache_key(command)
+    entry = cache_store.get(signature)
     if entry is None:
         return None
-    cached_at = entry.get("cached_at")
+
     result = entry.get("result")
-    if not isinstance(result, dict):
+    if not _is_done_result(result):
         return None
-    if result.get("status") != "done":
-        return None
+
+    cached_at = entry.get("cached_at")
     if not isinstance(cached_at, (int, float)):
         return None
-    if time.time() - float(cached_at) >= _resolve_ttl():
+    age_seconds = time.time() - float(cached_at)
+    if age_seconds >= _resolve_ttl_seconds():
         return None
     return result
 
@@ -64,9 +76,6 @@ def store(command: str, result: dict[str, Any]) -> None:
     Citations:
     - AC-FR-04.3: 成功 (done) 後寫入;非 done 不寫.
     """
-    if not isinstance(result, dict):
+    if not _is_done_result(result):
         return
-    if result.get("status") != "done":
-        return
-    sig = cache_key(command)
-    cache_store.put(sig, result)
+    cache_store.put(cache_key(command), result)
