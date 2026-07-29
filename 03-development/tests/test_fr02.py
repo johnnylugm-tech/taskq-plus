@@ -169,6 +169,8 @@ def _build_child_env(home: Path) -> dict:
 # -------------------------------------------------------------------
 
 
+# NFR-02 — security: no ``shell=True`` anywhere under 03-development/src/.
+# NFR-09 — zero-skip: this test always runs (no parametrize skip branch).
 def test_fr02_shell_false_invariant():
     """AC-FR-02.1: ``03-development/src/`` contains zero ``shell=True`` hits.
 
@@ -250,45 +252,46 @@ def test_fr02_completion_fields_atomic_write(
 
     submit_result = _run_submit("true")
 
-    if submit_result.exit_code == 0:
-        assert submit_result.exit_code == 0
-        assert len(submit_result.task_id_str) == 8
+    assert submit_result.exit_code == 0, submit_result.stderr
+    assert len(submit_result.task_id_str) == 8
 
-        task_id = submit_result.task_id_str
+    task_id = submit_result.task_id_str
 
-        # Reset counter so we measure ONLY the run-transition writes.
-        save_calls.clear()
+    # Reset counter so we measure ONLY the run-transition writes.
+    save_calls.clear()
 
-        run_result = _run_run_cli(task_id)
-        home = isolated_taskq_home
+    run_result = _run_run_cli(task_id)
+    home = isolated_taskq_home
 
-        task_record = _tasks_map(home).get(task_id, {})
+    task_record = _tasks_map(home).get(task_id, {})
 
-        present_fields = [
-            name
-            for name in [
-                "exit_code",
-                "stdout_tail",
-                "stderr_tail",
-                "duration_ms",
-                "finished_at",
-            ]
-            if name in task_record
+    present_fields = [
+        name
+        for name in [
+            "exit_code",
+            "stdout_tail",
+            "stderr_tail",
+            "duration_ms",
+            "finished_at",
         ]
-        actual_fields = ",".join(present_fields)
+        if name in task_record
+    ]
+    actual_fields = ",".join(present_fields)
 
-        result = SimpleNamespace(
-            exit_code=run_result.exit_code,
-            fields_present=actual_fields,
-            transition_writes=len(save_calls),
-        )
+    result = SimpleNamespace(
+        exit_code=run_result.exit_code,
+        fields_present=actual_fields,
+        transition_writes=len(save_calls),
+    )
 
-        assert expected_fields == (
-            "exit_code,stdout_tail,stderr_tail,duration_ms,finished_at"
-        )
-        assert result.exit_code == 0
-        assert result.fields_present == expected_fields
-        assert result.transition_writes == 1
+    # AC2-fields-present
+    assert expected_fields == (
+        "exit_code,stdout_tail,stderr_tail,duration_ms,finished_at"
+    )
+    assert result.exit_code == 0
+    assert result.fields_present == expected_fields
+    # AC2-atomic-single-write
+    assert result.transition_writes == 1
 
 
 # -------------------------------------------------------------------
@@ -360,24 +363,28 @@ def test_fr02_run_all_kahn_topological_order(isolated_taskq_home):
         exit_code=run_completed.returncode,
         max_workers=max_workers,
         topo_pos=topo_pos,
+        finished_at_by_idx=finished_at_by_idx,
         all_done=all(
             rec.get("status") == "done" for rec in finished_records.values()
         ),
     )
 
-    # Guard is on the INPUT spec (max_workers==4, edges list).
-    if max_workers == 4 and edges == [(0, 1), (1, 2)]:
-        assert result.max_workers == 4
-        # AC2-run-all-concurrency — run --all must complete successfully.
-        # Fails RED when no `run` subcommand exists in cli.main().
-        assert result.exit_code == 0, run_completed.stderr
-        # Every submitted task must have actually been executed
-        # (status=done). Fails RED because the executor isn't implemented
-        # and tasks remain in `pending`.
-        assert result.all_done
-        # AC2-kahn-order-preserves-deps: for every edge (u,v), u < v in topo_pos.
-        for u, v in edges:
-            assert result.topo_pos[u] < result.topo_pos[v]
+    # AC2-run-all-concurrency — the declared ThreadPoolExecutor width.
+    assert result.max_workers == 4
+    # ``run --all`` must complete successfully. Fails RED when no `run`
+    # subcommand exists in cli.main().
+    assert result.exit_code == 0, run_completed.stderr
+    # Every submitted task must actually have been executed (status=done).
+    # Fails RED because the executor isn't implemented and tasks stay pending.
+    assert result.all_done
+    # Ordering below is only meaningful with real, distinct timestamps —
+    # all-empty finished_at values sort stably back into submission order
+    # and would make AC2-kahn-order-preserves-deps pass vacuously.
+    assert all(bool(ts) for ts in result.finished_at_by_idx.values())
+    assert len(set(result.finished_at_by_idx.values())) == tasks_n
+    # AC2-kahn-order-preserves-deps: for every edge (u,v), u < v in topo_pos.
+    for u, v in edges:
+        assert result.topo_pos[u] < result.topo_pos[v]
 
 
 # -------------------------------------------------------------------
