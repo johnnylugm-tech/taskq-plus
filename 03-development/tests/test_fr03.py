@@ -193,6 +193,9 @@ def _child_env(home: Path) -> dict:
 # -------------------------------------------------------------------
 
 
+# NFR-02 — execution safety: retry path must use shell=False (the executor's
+# run_subprocess is the same path the retry loop calls); NFR-03 — sleep is
+# injected so no real wall-clock waits; NFR-09 — zero-skip (always runs).
 # GREEN TODO: taskq_plus.service.executor must have
 #   run_subprocess(command: str, timeout: float) -> subprocess.CompletedProcess
 # and execute_task(store, task_id, *, sleep=time.sleep) -> tuple[str, dict|None]
@@ -263,6 +266,8 @@ def test_fr03_retry_with_exponential_backoff(monkeypatch):
 # -------------------------------------------------------------------
 
 
+# NFR-03 — atomic persistence: breaker.json is written via
+# atomic_write_json (tmp + os.replace); NFR-09 — zero-skip.
 # GREEN TODO: taskq_plus.storage.breaker_store must have
 #   save(state: dict) -> None  which calls the module-level name
 #   ``atomic_write_json(path, payload)`` exactly once per transition.
@@ -325,6 +330,8 @@ def test_fr03_breaker_threshold_persists_open(monkeypatch):
 # -------------------------------------------------------------------
 
 
+# NFR-02 — execution safety: the breaker check must happen BEFORE any
+# subprocess is spawned (this test pins that ordering); NFR-09 — zero-skip.
 # GREEN TODO: the ``run`` CLI path must call
 #   taskq_plus.service.breaker.assert_closed() BEFORE
 #   taskq_plus.service.executor.run_subprocess(command, timeout) is reached.
@@ -373,6 +380,8 @@ def test_fr03_breaker_open_rejects_with_exit_3(monkeypatch):
 # -------------------------------------------------------------------
 
 
+# NFR-03 — atomic persistence: counter reset re-persists CLOSED atomically;
+# NFR-09 — zero-skip.
 def test_fr03_breaker_half_open_success_closes():
     """AC-FR-03.4 — HALF_OPEN admits one task; success → CLOSED, count 0.
 
@@ -422,6 +431,8 @@ def test_fr03_breaker_half_open_success_closes():
 # -------------------------------------------------------------------
 
 
+# NFR-03 — atomic persistence: failure re-opens and re-persists state
+# atomically; NFR-09 — zero-skip.
 def test_fr03_breaker_half_open_failure_reopens(monkeypatch):
     """AC-FR-03.4 — HALF_OPEN admits one task; failure → back to OPEN.
 
@@ -460,6 +471,8 @@ def test_fr03_breaker_half_open_failure_reopens(monkeypatch):
 # -------------------------------------------------------------------
 
 
+# NFR-02 — execution safety: subprocess uses shell=False explicitly;
+# NFR-03 — atomic persistence (recovery path persists CLOSED state); NFR-09 — zero-skip.
 def test_fr03_breaker_recovers_after_cooldown():
     """AC-FR-03.5 — after cooldown a task is admitted and succeeds (exit 0).
 
