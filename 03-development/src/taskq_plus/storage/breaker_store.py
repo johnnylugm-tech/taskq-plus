@@ -14,6 +14,7 @@ Citations:
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from taskq_plus.config import config
@@ -29,6 +30,11 @@ DEFAULT_STATE: dict[str, Any] = {
     "failure_count": 0,
     "opened_at": None,
 }
+
+# Breaker state machine alphabet (SPEC.md §3 FR-03 line 110-115). Any
+# value outside this set on disk is clamped to ``CLOSED`` so a corrupted
+# envelope can never wedge the breaker.
+_VALID_STATES: frozenset[str] = frozenset({"CLOSED", "OPEN", "HALF_OPEN"})
 
 
 def _path():
@@ -47,8 +53,6 @@ def load() -> dict[str, Any]:
     path = _path()
     if not path.exists():
         return dict(DEFAULT_STATE)
-    import json
-
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
@@ -56,7 +60,7 @@ def load() -> dict[str, Any]:
     if not isinstance(data, dict):
         return dict(DEFAULT_STATE)
     state = data.get("state", "CLOSED")
-    if state not in ("CLOSED", "OPEN", "HALF_OPEN"):
+    if state not in _VALID_STATES:
         state = "CLOSED"
     return {
         "version": 1,

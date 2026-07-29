@@ -68,12 +68,14 @@ def _persist(state: str, failure_count: int, opened_at: Any) -> None:
 
 def current_state() -> str:
     """Return the current breaker state (``CLOSED`` / ``OPEN`` / ``HALF_OPEN``)."""
-    return str(breaker_store.load().get("state", "CLOSED"))
+    # ``breaker_store.load`` already normalises state to the canonical
+    # alphabet, so direct key access is sufficient.
+    return breaker_store.load()["state"]
 
 
 def failure_count() -> int:
     """Return the current consecutive-final-failure counter."""
-    return int(breaker_store.load().get("failure_count", 0) or 0)
+    return breaker_store.load()["failure_count"]
 
 
 def assert_closed() -> None:
@@ -93,24 +95,24 @@ def assert_closed() -> None:
     - SPEC.md §3 FR-03 line 114: 經 cooldown 秒後進入 HALF_OPEN.
     """
     data = breaker_store.load()
-    state = str(data.get("state", "CLOSED"))
-    count = int(data.get("failure_count", 0) or 0)
-    opened_at = data.get("opened_at")
+    state = data["state"]
+    count = data["failure_count"]
+    opened_at = data["opened_at"]
 
-    if state == "OPEN":
-        cooldown = _cooldown()
-        if opened_at is None:
-            # Defensive: an OPEN record without a clock is treated as
-            # "cooldown already elapsed" so the breaker cannot lock
-            # forever. Mirrors SPEC.md R3 mitigation.
-            _persist("HALF_OPEN", count, opened_at)
-            return
-        if (time.time() - float(opened_at)) >= cooldown:
-            _persist("HALF_OPEN", count, opened_at)
-            return
-        raise BreakerOpen("breaker open")
-    # CLOSED or HALF_OPEN: admit unconditionally.
-    return
+    if state != "OPEN":
+        # CLOSED or HALF_OPEN: admit unconditionally.
+        return
+
+    # An OPEN record without a clock is treated as "cooldown already
+    # elapsed" so the breaker cannot lock forever (SPEC.md R3
+    # mitigation).
+    cooldown_elapsed = opened_at is None or (
+        time.time() - float(opened_at)
+    ) >= _cooldown()
+    if cooldown_elapsed:
+        _persist("HALF_OPEN", count, opened_at)
+        return
+    raise BreakerOpen("breaker open")
 
 
 def record_failure() -> int:
@@ -123,17 +125,15 @@ def record_failure() -> int:
       failed/timeout) 計數 ≥ ``TASKQ_BREAKER_THRESHOLD`` → ``OPEN``.
     - AC-FR-03.2: state persisted atomically in ``breaker.json``.
     """
-    data = breaker_store.load()
-    count = int(data.get("failure_count", 0) or 0)
-    new_count = count + 1
-    threshold = _threshold()
-    if new_count >= threshold:
-        _persist("OPEN", new_count, time.time())
+    new_count = breaker_store.load()["failure_count"] + 1
+    if new_count >= _threshold():
+        next_state, opened_at = "OPEN", time.time()
     else:
         # Stay CLOSED but advance the counter (one atomic write per
         # recorded failure — the breaker envelope is the single source
         # of truth for the counter).
-        _persist("CLOSED", new_count, None)
+        next_state, opened_at = "CLOSED", None
+    _persist(next_state, new_count, opened_at)
     return new_count
 
 
@@ -151,9 +151,7 @@ def record_success() -> int:
     - AC-FR-03.4: HALF_OPEN + success → CLOSED.
     """
     data = breaker_store.load()
-    state = str(data.get("state", "CLOSED"))
-    count = int(data.get("failure_count", 0) or 0)
-    if state == "CLOSED":
-        return count
+    if data["state"] == "CLOSED":
+        return data["failure_count"]
     _persist("CLOSED", 0, None)
     return 0
