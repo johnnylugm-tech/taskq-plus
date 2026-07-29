@@ -1,0 +1,216 @@
+{
+  "deliverable": "/Users/johnny/projects/taskq-plus/01-requirements/SRS.md",
+  "canonical": "/Users/johnny/projects/taskq-plus/SPEC.md",
+  "mode": "srs_vs_spec",
+  "spec_present": true,
+  "summary": {
+    "total_ac": 20,
+    "verbatim_count": 0,
+    "interpreted_count": 20,
+    "invention_count": 0,
+    "over_spec_threshold": 0.7,
+    "high_score_count": 9
+  },
+  "per_ac": [
+    {
+      "label": "FR-01",
+      "fr_id": "FR-01",
+      "score": {
+        "over_spec_score": 0.705,
+        "best_match_ratio": 0.295,
+        "derived_present": true,
+        "verdict": "interpreted"
+      }
+    },
+    {
+      "label": "FR-02",
+      "fr_id": "FR-02",
+      "score": {
+        "over_spec_score": 0.542,
+        "best_match_ratio": 0.458,
+        "derived_present": true,
+        "verdict": "interpreted"
+      }
+    },
+    {
+      "label": "FR-03",
+      "fr_id": "FR-03",
+      "score": {
+        "over_spec_score": 0.753,
+        "best_match_ratio": 0.247,
+        "derived_present": true,
+        "verdict": "interpreted"
+      }
+    },
+    {
+      "label": "FR-04",
+      "fr_id": "FR-04",
+      "score": {
+        "over_spec_score": 0.671,
+        "best_match_ratio": 0.329,
+        "derived_present": true,
+        "verdict": "interpreted"
+      }
+    },
+    {
+      "label": "FR-05",
+      "fr_id": "FR-05",
+      "score": {
+        "over_spec_score": 0.661,
+        "best_match_ratio": 0.339,
+        "derived_present": true,
+        "verdict": "interpreted"
+      }
+    },
+    {
+      "label": "FR-06",
+      "fr_id": "FR-06",
+      "score": {
+        "over_spec_score": 0.688,
+        "best_match_ratio": 0.312,
+        "derived_present": true,
+        "verdict": "interpreted"
+      }
+    },
+    {
+      "label": "FR-07",
+      "fr_id": "FR-07",
+      "score": {
+        "over_spec_score": 0.642,
+        "best_match_ratio": 0.358,
+        "derived_present": true,
+        "verdict": "interpreted"
+      }
+    },
+    {
+      "label": "FR-08",
+      "fr_id": "FR-08",
+      "score": {
+        "over_spec_score": 0.724,
+        "best_match_ratio": 0.276,
+        "derived_present": true,
+        "verdict": "interpreted"
+      }
+    },
+    {
+      "label": "NFR-01",
+      "fr_id": "NFR-01",
+      "score": {
+        "over_spec_score": 0.753,
+        "best_match_ratio": 0.247,
+        "derived_present": true,
+        "verdict": "interpreted"
+      }
+    },
+    {
+      "label": "NFR-02",
+      "fr_id": "NFR-02",
+      "score": {
+        "over_spec_score": 0.729,
+        "best_match_ratio": 0.271,
+        "derived_present": true,
+        "verdict": "interpreted"
+      }
+    },
+    {
+      "label": "NFR-03",
+      "fr_id": "NFR-03",
+      "score": {
+        "over_spec_score": 0.753,
+        "best_match_ratio": 0.247,
+        "derived_present": true,
+        "verdict": "interpreted"
+      }
+    },
+    {
+      "label": "NFR-04",
+      "fr_id": "NFR-04",
+      "score": {
+        "over_spec_score": 0.691,
+        "best_match_ratio": 0.309,
+        "derived_present": true,
+        "verdict": "interpreted"
+      }
+    },
+    {
+      "label": "NFR-05",
+      "fr_id": "NFR-05",
+      "score": {
+        "over_spec_score": 0.733,
+        "best_match_ratio": 0.267,
+        "derived_present": true,
+        "verdict": "interpreted"
+      }
+    },
+    {
+      "label": "NFR-06",
+      "fr_id": "NFR-06",
+      "score": {
+        "over_spec_score": 0.677,
+        "best_match_ratio": 0.323,
+        "derived_present": true,
+        "verdict": "interpreted"
+      }
+    },
+    {
+      "label": "NFR-07",
+      "fr_id": "NFR-07",
+      "score": {
+        "over_spec_score": 0.608,
+        "best_match_ratio": 0.392,
+        "derived_present": true,
+        "verdict": "interpreted"
+      }
+    },
+    {
+      "label": "NFR-08",
+      "fr_id": "NFR-08",
+      "score": {
+        "over_spec_score": 0.578,
+        "best_match_ratio": 0.422,
+        "derived_present": true,
+        "verdict": "interpreted"
+      }
+    },
+    {
+      "label": "NFR-09",
+      "fr_id": "NFR-09",
+      "score": {
+        "over_spec_score": 0.678,
+        "best_match_ratio": 0.322,
+        "derived_present": true,
+        "verdict": "interpreted"
+      }
+    },
+    {
+      "label": "NFR-10",
+      "fr_id": "NFR-10",
+      "score": {
+        "over_spec_score": 0.516,
+        "best_match_ratio": 0.484,
+        "derived_present": false,
+        "verdict": "interpreted"
+      }
+    },
+    {
+      "label": "NFR-11",
+      "fr_id": "NFR-11",
+      "score": {
+        "over_spec_score": 0.787,
+        "best_match_ratio": 0.213,
+        "derived_present": true,
+        "verdict": "interpreted"
+      }
+    },
+    {
+      "label": "NFR-12",
+      "fr_id": "NFR-12",
+      "score": {
+        "over_spec_score": 0.704,
+        "best_match_ratio": 0.296,
+        "derived_present": true,
+        "verdict": "interpreted"
+      }
+    }
+  ]
+}
