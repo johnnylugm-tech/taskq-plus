@@ -208,9 +208,41 @@ def test_fr01_submit_injection_blacklist(
         assert not tasks_file.exists()
 
 
-# -------------------------------------------------------------------
-# FR-01 Case 10 — command > 1000 chars rejected
-# -------------------------------------------------------------------
+# TEST_SPEC names each injection character as a separate traceable case.
+def _assert_injection_rejected(command, injection_char, isolated_taskq_home):
+    tasks_file = isolated_taskq_home / "tasks.json"
+    result = _run_submit(command)
+    assert injection_char in command
+    assert result.exit_code == 2
+    assert not tasks_file.exists()
+
+
+def test_fr01_submit_injection_semicolon_rejected(isolated_taskq_home):
+    _assert_injection_rejected("echo hi; rm x", ";", isolated_taskq_home)
+
+
+def test_fr01_submit_injection_pipe_rejected(isolated_taskq_home):
+    _assert_injection_rejected("echo hi | cat", "|", isolated_taskq_home)
+
+
+def test_fr01_submit_injection_ampersand_rejected(isolated_taskq_home):
+    _assert_injection_rejected("echo hi & echo y", "&", isolated_taskq_home)
+
+
+def test_fr01_submit_injection_dollar_rejected(isolated_taskq_home):
+    _assert_injection_rejected("echo $HOME", "$", isolated_taskq_home)
+
+
+def test_fr01_submit_injection_gt_rejected(isolated_taskq_home):
+    _assert_injection_rejected("echo hi > x", ">", isolated_taskq_home)
+
+
+def test_fr01_submit_injection_lt_rejected(isolated_taskq_home):
+    _assert_injection_rejected("cat < x", "<", isolated_taskq_home)
+
+
+def test_fr01_submit_injection_backtick_rejected(isolated_taskq_home):
+    _assert_injection_rejected("echo `id`", "`", isolated_taskq_home)
 
 
 # NFR-03 — atomic: rejected submission must not touch tasks.json
