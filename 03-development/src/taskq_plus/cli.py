@@ -1,12 +1,14 @@
-"""[FR-01 / FR-02 / FR-03] CLI entry surface.
+"""[FR-01 / FR-02 / FR-03 / FR-04] CLI entry surface.
 
 Citations:
 - SPEC.md §3 FR-01 (任務提交與驗證) lines 72-92
 - SPEC.md §3 FR-02 (任務執行器) lines 94-104
 - SPEC.md §3 FR-03 (重試與斷路器) lines 106-115
+- SPEC.md §3 FR-04 (結果 TTL 快取) lines 116-122
 - TEST_SPEC.md FR-01 ACs (AC-FR-01.1 .. AC-FR-01.7)
 - TEST_SPEC.md FR-02 ACs (AC-FR-02.1 .. AC-FR-02.5)
 - TEST_SPEC.md FR-03 ACs (AC-FR-03.1 .. AC-FR-03.5)
+- TEST_SPEC.md FR-04 ACs (AC-FR-04.1 .. AC-FR-04.4)
 - SPEC.md §7 錯誤處理 (行 379-389): validation failures → exit 2
 - SPEC.md §7 錯誤處理 row ``breaker OPEN``: exit 3, stderr
   ``breaker open``, 不執行 subprocess.
@@ -18,12 +20,13 @@ import argparse
 import sys
 import time
 import uuid
-from typing import Sequence
+from typing import Any, Sequence
 
 from pydantic import ValidationError
 
 from taskq_plus.config import config
 from taskq_plus.service import breaker
+from taskq_plus.service import cache
 from taskq_plus.service import executor
 from taskq_plus.models.task import TaskSubmission
 from taskq_plus.observability.audit import write_event
@@ -63,6 +66,15 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         dest="run_all",
         help="Run all pending tasks in DAG topological order",
+    )
+    run.add_argument(
+        "--cached",
+        action="store_true",
+        dest="cached",
+        help=(
+            "Replay from TTL cache on hit, write-through on miss "
+            "(FR-04). Valid with both ``run <id>`` and ``run --all``."
+        ),
     )
     return parser
 
@@ -146,6 +158,50 @@ def _handle_submit(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _replay_from_cache(
+    store: TaskStore, task_id: str
+) -> dict[str, Any] | None:
+    """Return the replayed task record on a cache HIT; ``None`` on miss.
+
+    Citations:
+    - AC-FR-04.2: 同簽名且結果為 ``done`` 的最近執行在
+      ``TASKQ_CACHE_TTL`` 秒內 → 直接回放 (exit_code/stdout_tail),
+      任務標記 ``done`` 且 ``cached: true`` (SPEC.md §8 #9).
+    - 不執行 subprocess — caller MUST short-circuit BEFORE
+      ``executor.execute_task`` so no spawn site is reached.
+    """
+    current = store.load()
+    task = current.get(task_id)
+    if task is None:
+        return None
+    command = task.get("command", "")
+    cached = cache.lookup(command)
+    if cached is None:
+        return None
+    replayed = {
+        **task,
+        "status": "done",
+        "exit_code": cached.get("exit_code", 0),
+        "stdout_tail": cached.get("stdout_tail", ""),
+        "stderr_tail": cached.get("stderr_tail", ""),
+        "cached": True,
+        "finished_at": utc_now_iso(),
+    }
+    current[task_id] = replayed
+    store.save(current)
+    return replayed
+
+
+def _cacheable_result(record: dict[str, Any]) -> dict[str, Any]:
+    """Project a persisted task record into the cache envelope shape."""
+    return {
+        "status": "done",
+        "exit_code": record.get("exit_code"),
+        "stdout_tail": record.get("stdout_tail", ""),
+        "stderr_tail": record.get("stderr_tail", ""),
+    }
+
+
 def _handle_run(args: argparse.Namespace) -> int:
     """Implement the ``run`` subcommand.
 
@@ -156,6 +212,9 @@ def _handle_run(args: argparse.Namespace) -> int:
       subprocess; final failure feeds ``record_failure``; success
       feeds ``record_success``; OPEN rejection → exit 3 + stderr
       ``breaker open``.
+    - SPEC.md §3 FR-04 lines 116-122 + SPEC.md §8 #9: ``--cached``
+      replays a fresh ``done`` entry without subprocess (cache HIT),
+      or writes the outcome through atomically (cache MISS).
     """
     # AC-FR-03.3 / SPEC.md §3 FR-03 step 2: the breaker gate runs
     # BEFORE we touch the task store or spawn anything, so a rejected
@@ -166,23 +225,45 @@ def _handle_run(args: argparse.Namespace) -> int:
         sys.stderr.write("breaker open\n")
         return EXIT_BREAKER_OPEN
 
+    cached_mode = bool(getattr(args, "cached", False))
     store = TaskStore(config().task_home / "tasks.json")
 
     if args.run_all:
-        executor.run_all(store)
+        statuses = executor.run_all(store)
+        if cached_mode:
+            # AC-FR-04.3 + AC-FR-04.4: write-through every ``done``
+            # task into the cache so ``run --all --cached`` is a
+            # cache-warming path concurrent with FR-02's pool.
+            all_tasks = store.load()
+            for tid, status in statuses.items():
+                if status != "done":
+                    continue
+                record = all_tasks.get(tid)
+                if record is None:
+                    continue
+                cache.store(record.get("command", ""), _cacheable_result(record))
         return EXIT_OK
 
     if not args.task_id:
         sys.stderr.write("taskq_plus: run requires a task id or --all\n")
         return 1
 
-    status, _ = executor.execute_task(store, args.task_id, sleep=time.sleep)
+    # AC-FR-04.2: cache HIT short-circuits BEFORE any subprocess spawn.
+    if cached_mode:
+        replayed = _replay_from_cache(store, args.task_id)
+        if replayed is not None:
+            return EXIT_OK
+
+    status, record = executor.execute_task(store, args.task_id, sleep=time.sleep)
 
     # SPEC.md §3 FR-03: only POST-RETRY final outcomes feed the breaker.
     if status in ("failed", "timeout"):
         breaker.record_failure()
     elif status == "done":
         breaker.record_success()
+        # AC-FR-04.3: write-through on ``done`` only.
+        if cached_mode and record is not None:
+            cache.store(record.get("command", ""), _cacheable_result(record))
 
     if status == "timeout":
         return EXIT_TIMEOUT
