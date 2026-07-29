@@ -35,6 +35,7 @@ class TaskStore:
             return {}
         if not isinstance(data, dict):
             return {}
+        # canonical envelope: {"version": 1, "tasks": {id: record}}
         inner = data.get("tasks")
         if isinstance(inner, dict):
             return {k: v for k, v in inner.items() if isinstance(v, dict)}

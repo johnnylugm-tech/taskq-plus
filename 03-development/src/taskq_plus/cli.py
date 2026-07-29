@@ -9,8 +9,6 @@ Citations:
 from __future__ import annotations
 
 import argparse
-import datetime as _dt
-import json
 import sys
 import uuid
 from typing import Sequence
@@ -21,14 +19,11 @@ from taskq_plus.config import config
 from taskq_plus.models.task import TaskSubmission
 from taskq_plus.observability.audit import write_event
 from taskq_plus.storage.task_store import TaskStore
+from taskq_plus.util import utc_now_iso
 
 
 EXIT_OK = 0
 EXIT_VALIDATION = 2
-
-
-def _now_iso() -> str:
-    return _dt.datetime.now(_dt.timezone.utc).isoformat()
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -53,24 +48,26 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _format_validation_error(exc: Exception) -> str:
-    """Render a pydantic ValidationError as a single stderr message.
+    """Render a pydantic ``ValidationError`` as a single stderr message.
 
     Strips the ``Value error, `` prefix pydantic prepends so the
     surfaced message matches the spec-canonical text (e.g.
     ``unknown dependency: deadbeef``).
     """
-    if isinstance(exc, ValidationError):
-        errs = exc.errors()
-        if errs:
-            ctx_err = errs[0].get("ctx", {}).get("error")
-            if ctx_err is not None:
-                return str(ctx_err)
-            msg = errs[0].get("msg", "")
-            prefix = "Value error, "
-            if msg.startswith(prefix):
-                msg = msg[len(prefix):]
-            return msg
-    return str(exc)
+    if not isinstance(exc, ValidationError):
+        return str(exc)
+    errs = exc.errors()
+    if not errs:
+        return str(exc)
+    first = errs[0]
+    ctx_err = first.get("ctx", {}).get("error")
+    if ctx_err is not None:
+        return str(ctx_err)
+    msg = first.get("msg", "")
+    prefix = "Value error, "
+    if msg.startswith(prefix):
+        msg = msg[len(prefix):]
+    return msg
 
 
 def _handle_submit(args: argparse.Namespace) -> int:
@@ -111,7 +108,7 @@ def _handle_submit(args: argparse.Namespace) -> int:
         "status": "pending",
         "command": submission.command,
         "name": submission.name,
-        "created_at": _now_iso(),
+        "created_at": utc_now_iso(),
         "depends_on": list(submission.depends_on),
     }
     store.save(new_tasks)

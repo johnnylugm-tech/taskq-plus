@@ -9,16 +9,12 @@ Citations:
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from taskq_plus.config import config
 from taskq_plus.storage.atomic import atomic_append_line
-
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+from taskq_plus.util import utc_now_iso
 
 
 def write_event(event: dict[str, Any]) -> None:
@@ -30,6 +26,6 @@ def write_event(event: dict[str, Any]) -> None:
     - SPEC.md §6 NFR-03: ``append + fsync``.
     """
     payload = dict(event)
-    payload.setdefault("ts", _now_iso())
+    payload.setdefault("ts", utc_now_iso())
     line = json.dumps(payload, separators=(",", ":"), sort_keys=True) + "\n"
     atomic_append_line(config().audit_log, line)
