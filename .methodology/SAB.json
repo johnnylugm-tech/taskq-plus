@@ -102,7 +102,14 @@
       "modules": [
         {
           "name": "taskq_plus.config"
-        }
+        },
+        "taskq_plus",
+        "taskq_plus.__main__",
+        "taskq_plus.cli",
+        "taskq_plus.models",
+        "taskq_plus.observability",
+        "taskq_plus.storage",
+        "taskq_plus.util"
       ],
       "allowed_dependencies": []
     }
