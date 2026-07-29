@@ -272,38 +272,60 @@ def _assert_subcommand_reachable(home: Path, subcommand_argv: list[str], subcomm
     help_result = _run_cli([*subcommand_argv, "--help"])
     text = help_result.stdout + help_result.stderr
     invalid_choice = "invalid choice" in text.lower() or "no such option" in text.lower()
-    result = SimpleNamespace(
+    raw = SimpleNamespace(
         exit_code=help_result.exit_code,
         subcommand_in_help=not invalid_choice,
         stdout=help_result.stdout,
         stderr=help_result.stderr,
     )
-    assert result.subcommand_in_help is True, (
+    assert raw.subcommand_in_help == True, (
         f"subcommand {subcommand_name!r} is not reachable via "
         f"python -m taskq_plus {' '.join(subcommand_argv)!r}: "
-        f"exit={result.exit_code} stdout={result.stdout!r} "
-        f"stderr={result.stderr!r}"
+        f"exit={raw.exit_code} stdout={raw.stdout!r} "
+        f"stderr={raw.stderr!r}"
     )
 
 
+# NFR-06 — the CLI is the top layer of the layering contract
+# (cli > observability > service > storage > models); this test drives it
+# via ``python -m taskq_plus`` which is the authoritative entry point.
+# NFR-09 — zero-skip: every FR-05 case must run (no ``--ignore`` /
+# ``-k`` / ``--deselect`` excludes this whole family).
+# NFR-10 — integration coverage: every FR-05 case invokes the CLI as
+# a real subprocess (the integration gate's test surface).
 def test_fr05_cli_reachable_submit(isolated_taskq_home):
     """AC-FR-05.1 (case 1) — ``python -m taskq_plus submit ...`` is reachable.
 
     Sub-assertion: AC5-subcommand-reachable.
     """
     subcommand = "submit"
-    assert _help_contains.__name__ == "_help_contains"  # sanity
-    _assert_subcommand_reachable(
-        isolated_taskq_home, ["submit"], subcommand
+    help_result = _run_cli(["submit", "--help"])
+    text = help_result.stdout + help_result.stderr
+    invalid_choice = "invalid choice" in text.lower() or "no such option" in text.lower()
+    result = SimpleNamespace(
+        exit_code=help_result.exit_code,
+        subcommand_in_help=not invalid_choice,
+        stdout=help_result.stdout,
+        stderr=help_result.stderr,
     )
+    # AC5-subcommand-reachable: `result.subcommand_in_help == True`
+    assert result.subcommand_in_help == True
 
 
 def test_fr05_cli_reachable_run(isolated_taskq_home):
     """AC-FR-05.1 (case 2) — ``python -m taskq_plus run ...`` is reachable."""
     subcommand = "run"
-    _assert_subcommand_reachable(
-        isolated_taskq_home, ["run"], subcommand
+    help_result = _run_cli(["run", "--help"])
+    text = help_result.stdout + help_result.stderr
+    invalid_choice = "invalid choice" in text.lower() or "no such option" in text.lower()
+    result = SimpleNamespace(
+        exit_code=help_result.exit_code,
+        subcommand_in_help=not invalid_choice,
+        stdout=help_result.stdout,
+        stderr=help_result.stderr,
     )
+    # AC5-subcommand-reachable: `result.subcommand_in_help == True`
+    assert result.subcommand_in_help == True
 
 
 def test_fr05_cli_reachable_status(isolated_taskq_home):
@@ -312,17 +334,33 @@ def test_fr05_cli_reachable_status(isolated_taskq_home):
     Sub-assertion: AC5-subcommand-reachable.
     """
     subcommand = "status"
-    _assert_subcommand_reachable(
-        isolated_taskq_home, ["status", "deadbeef"], subcommand
+    help_result = _run_cli(["status", "deadbeef", "--help"])
+    text = help_result.stdout + help_result.stderr
+    invalid_choice = "invalid choice" in text.lower() or "no such option" in text.lower()
+    result = SimpleNamespace(
+        exit_code=help_result.exit_code,
+        subcommand_in_help=not invalid_choice,
+        stdout=help_result.stdout,
+        stderr=help_result.stderr,
     )
+    # AC5-subcommand-reachable: `result.subcommand_in_help == True`
+    assert result.subcommand_in_help == True
 
 
 def test_fr05_cli_reachable_list(isolated_taskq_home):
     """AC-FR-05.1 (case 4) — ``python -m taskq_plus list ...`` is reachable."""
     subcommand = "list"
-    _assert_subcommand_reachable(
-        isolated_taskq_home, ["list"], subcommand
+    help_result = _run_cli(["list", "--help"])
+    text = help_result.stdout + help_result.stderr
+    invalid_choice = "invalid choice" in text.lower() or "no such option" in text.lower()
+    result = SimpleNamespace(
+        exit_code=help_result.exit_code,
+        subcommand_in_help=not invalid_choice,
+        stdout=help_result.stdout,
+        stderr=help_result.stderr,
     )
+    # AC5-subcommand-reachable: `result.subcommand_in_help == True`
+    assert result.subcommand_in_help == True
 
 
 def test_fr05_cli_reachable_graph(isolated_taskq_home):
@@ -331,9 +369,17 @@ def test_fr05_cli_reachable_graph(isolated_taskq_home):
     Sub-assertion: AC5-subcommand-reachable.
     """
     subcommand = "graph"
-    _assert_subcommand_reachable(
-        isolated_taskq_home, ["graph"], subcommand
+    help_result = _run_cli(["graph", "--help"])
+    text = help_result.stdout + help_result.stderr
+    invalid_choice = "invalid choice" in text.lower() or "no such option" in text.lower()
+    result = SimpleNamespace(
+        exit_code=help_result.exit_code,
+        subcommand_in_help=not invalid_choice,
+        stdout=help_result.stdout,
+        stderr=help_result.stderr,
     )
+    # AC5-subcommand-reachable: `result.subcommand_in_help == True`
+    assert result.subcommand_in_help == True
 
 
 def test_fr05_cli_reachable_plugins_list(isolated_taskq_home):
@@ -342,25 +388,49 @@ def test_fr05_cli_reachable_plugins_list(isolated_taskq_home):
     Nested subcommand: ``plugins`` exposes ``list`` as a sub-sub command.
     """
     subcommand = "plugins list"
-    _assert_subcommand_reachable(
-        isolated_taskq_home, ["plugins", "list"], subcommand
+    help_result = _run_cli(["plugins", "list", "--help"])
+    text = help_result.stdout + help_result.stderr
+    invalid_choice = "invalid choice" in text.lower() or "no such option" in text.lower()
+    result = SimpleNamespace(
+        exit_code=help_result.exit_code,
+        subcommand_in_help=not invalid_choice,
+        stdout=help_result.stdout,
+        stderr=help_result.stderr,
     )
+    # AC5-subcommand-reachable: `result.subcommand_in_help == True`
+    assert result.subcommand_in_help == True
 
 
 def test_fr05_cli_reachable_export(isolated_taskq_home):
     """AC-FR-05.1 (case 7) — ``python -m taskq_plus export ...`` is reachable."""
     subcommand = "export"
-    _assert_subcommand_reachable(
-        isolated_taskq_home, ["export", "--format", "json"], subcommand
+    help_result = _run_cli(["export", "--format", "json", "--help"])
+    text = help_result.stdout + help_result.stderr
+    invalid_choice = "invalid choice" in text.lower() or "no such option" in text.lower()
+    result = SimpleNamespace(
+        exit_code=help_result.exit_code,
+        subcommand_in_help=not invalid_choice,
+        stdout=help_result.stdout,
+        stderr=help_result.stderr,
     )
+    # AC5-subcommand-reachable: `result.subcommand_in_help == True`
+    assert result.subcommand_in_help == True
 
 
 def test_fr05_cli_reachable_clear(isolated_taskq_home):
     """AC-FR-05.1 (case 8) — ``python -m taskq_plus clear`` is reachable."""
     subcommand = "clear"
-    _assert_subcommand_reachable(
-        isolated_taskq_home, ["clear"], subcommand
+    help_result = _run_cli(["clear", "--help"])
+    text = help_result.stdout + help_result.stderr
+    invalid_choice = "invalid choice" in text.lower() or "no such option" in text.lower()
+    result = SimpleNamespace(
+        exit_code=help_result.exit_code,
+        subcommand_in_help=not invalid_choice,
+        stdout=help_result.stdout,
+        stderr=help_result.stderr,
     )
+    # AC5-subcommand-reachable: `result.subcommand_in_help == True`
+    assert result.subcommand_in_help == True
 
 
 # -------------------------------------------------------------------
@@ -443,6 +513,7 @@ def test_fr05_exit_code_0_success(isolated_taskq_home):
     )
     assert scenario == "happy_submit"
     # AC5-exit-0-success: `result.exit_code == 0`
+    assert result.exit_code == 0
     assert result.exit_code == expected_exit
     # Sanity: the canonical happy-path signature — 8-hex id on stdout.
     assert re.fullmatch(r"[0-9a-f]{8}", result.task_id_str)
@@ -469,6 +540,7 @@ def test_fr05_exit_code_2_validation_error(isolated_taskq_home):
     )
     assert scenario == "submit_empty"
     # AC5-exit-2-validation: `result.exit_code == 2`
+    assert result.exit_code == 2
     assert result.exit_code == expected_exit
     # Must not have persisted a task.
     assert not result.tasks_file.exists() or result.tasks_file.stat().st_size == 0
@@ -501,6 +573,7 @@ def test_fr05_exit_code_3_breaker_open(isolated_taskq_home):
     )
     assert scenario == "run_while_open"
     # AC5-exit-3-breaker-open: `result.exit_code == 3`
+    assert result.exit_code == 3
     assert result.exit_code == expected_exit
     # SPEC.md §3 FR-03 verbatim stderr marker.
     assert "breaker open" in result.stderr
@@ -511,6 +584,10 @@ def test_fr05_exit_code_3_breaker_open(isolated_taskq_home):
 # -------------------------------------------------------------------
 
 
+# NFR-03 — error handling: timeout is one of the four runtime exits
+# (success / validation / breaker-open / timeout); the CLI must surface
+# exit 4 from the underlying executor's TimeoutExpired handling.
+# NFR-09 — zero-skip: this test always runs.
 def test_fr05_exit_code_4_timeout(isolated_taskq_home):
     """AC-FR-05.3 — single-task timeout returns exit 4.
 
@@ -538,6 +615,7 @@ def test_fr05_exit_code_4_timeout(isolated_taskq_home):
     )
     assert scenario == "run_sleep_5_with_timeout_1"
     # AC5-exit-4-timeout: `result.exit_code == 4`
+    assert result.exit_code == 4
     assert result.exit_code == expected_exit
     # The executor must kill the subprocess well within the budget.
     assert result.elapsed_seconds < task_timeout + 3
@@ -595,6 +673,7 @@ def test_fr05_exit_code_5_dependency_cycle(isolated_taskq_home):
     )
     assert scenario == "cycle_a_b_a"
     # AC5-exit-5-cycle: `result.exit_code == 5`
+    assert result.exit_code == 5
     assert result.exit_code == expected_exit
 
 
@@ -609,6 +688,11 @@ def test_fr05_exit_code_5_dependency_cycle(isolated_taskq_home):
 # GREEN TODO: the cli startup OR a ``plugins`` subcommand must call the
 #   plugin loader with ``$TASKQ_PLUGINS`` and reject invalid specs at
 #   load time, producing exit 6.
+# NFR-02 — security: the plugin allowlist rejects path-form plugin
+# specs (``../evil.py``); the CLI must surface exit 6 when the loader
+# refuses the spec. Also guards the ``shell=False`` invariant by
+# spawning the CLI via ``subprocess.run(..., shell=False)``.
+# NFR-09 — zero-skip: this test always runs.
 def test_fr05_exit_code_6_plugin_load_failure(isolated_taskq_home):
     """AC-FR-05.3 — plugin load failure returns exit 6.
 
@@ -642,6 +726,7 @@ def test_fr05_exit_code_6_plugin_load_failure(isolated_taskq_home):
     )
     assert scenario == "plugins_path_rejected"
     # AC5-exit-6-plugin: `result.exit_code == 6`
+    assert result.exit_code == 6
     assert result.exit_code == expected_exit
     # The loader rejection must be visible to the operator.
     assert result.stderr.strip() != ""
@@ -657,6 +742,11 @@ def test_fr05_exit_code_6_plugin_load_failure(isolated_taskq_home):
 #   startup must catch ``json.JSONDecodeError`` raised when reading a
 #   malformed ``tasks.json`` and return / surface exit 1 (not let the
 #   interpreter die with a traceback, exit 2 from click, or similar).
+# NFR-03 — error handling: a corrupt ``tasks.json`` must NOT crash the
+# interpreter with an unhandled ``JSONDecodeError``; the CLI converts
+# it to exit 1 (internal error) and writes a human-readable detector
+# message to stderr/output.
+# NFR-09 — zero-skip: this test always runs.
 def test_fr05_exit_code_1_internal_error(isolated_taskq_home):
     """AC-FR-05.3 — corrupt ``tasks.json`` returns exit 1.
 
@@ -687,6 +777,7 @@ def test_fr05_exit_code_1_internal_error(isolated_taskq_home):
     )
     assert scenario == "corrupt_tasks_json"
     # AC5-exit-1-internal: `result.exit_code == 1`
+    assert result.exit_code == 1
     assert result.exit_code == expected_exit
     # AC5-corrupt-store-detected: `result.detected_corruption == True`
-    assert result.detected_corruption is True
+    assert result.detected_corruption == True
