@@ -1,0 +1,50 @@
+{
+  "schema": "harness/traceability/attestation/v1",
+  "git_sha": "35599bb377085ad6c64c410bafe53ef11f936ce0",
+  "content_sha256": "6eb14a3bdf4358771cd1bad5390b4d447a7e1fe13d5a5e798fea6eedf703eaf9",
+  "tool": "scripts/build_trace_attestation.py",
+  "overlay_used": null,
+  "overlay_errors": [],
+  "matrix": {
+    "schema_version": "harness/traceability/overlay/v1",
+    "project_id": "taskq-plus",
+    "completeness": {
+      "total_requirements": 1,
+      "srs_coverage": "100.0%",
+      "code_coverage": "0.0%",
+      "test_coverage": "0.0%",
+      "verification_rate": "0.0%",
+      "total_links": 1,
+      "missing_mappings": {
+        "fr_without_srs": [],
+        "fr_without_code": [
+          "FR-01"
+        ],
+        "fr_without_test": [
+          "FR-01"
+        ]
+      }
+    },
+    "missing": {
+      "fr_without_srs": [],
+      "fr_without_code": [
+        "FR-01"
+      ],
+      "fr_without_test": [
+        "FR-01"
+      ]
+    },
+    "requirements": {
+      "FR-01": {
+        "fr_id": "FR-01",
+        "status": "pending",
+        "srs_section": "SAD.md",
+        "code_files": [],
+        "test_files": [],
+        "sad_module": "—",
+        "priority": "HIGH"
+      }
+    },
+    "annotations": {}
+  }
+}
