@@ -132,6 +132,13 @@
         "rounds_used": 2,
         "open_critical": 0,
         "open_high": 0
+      },
+      "FR-04": {
+        "score": 95.88,
+        "quality_complete": true,
+        "rounds_used": 2,
+        "open_critical": 0,
+        "open_high": 0
       }
     },
     "gate2": null,
