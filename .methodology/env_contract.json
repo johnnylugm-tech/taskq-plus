@@ -1,0 +1,55 @@
+{
+  "classified_at": "2026-07-29T19:59:34Z",
+  "cli_tools": [
+    "bandit",
+    "click",
+    "igraph",
+    "jsonschema",
+    "lint-imports",
+    "make",
+    "mutmut",
+    "mypy",
+    "opentelemetry.exporter.otlp.proto.http",
+    "pip",
+    "pip-licenses",
+    "pydantic",
+    "pyright",
+    "pytest",
+    "pytest_benchmark",
+    "pytest_cov",
+    "python3.11",
+    "radon",
+    "ruff",
+    "scancode",
+    "semgrep",
+    "tree_sitter",
+    "tree_sitter_javascript",
+    "tree_sitter_typescript",
+    "yaml"
+  ],
+  "enforcer_sha": "c3451a61a9b595821572c38468f6971916343dae",
+  "env_vars": {
+    "dev_opt_in": [],
+    "has_default": [
+      "TASKQ_AUDIT_LOG",
+      "TASKQ_BACKOFF_BASE",
+      "TASKQ_BREAKER_COOLDOWN",
+      "TASKQ_BREAKER_THRESHOLD",
+      "TASKQ_CACHE_TTL",
+      "TASKQ_HOME",
+      "TASKQ_LOG_LEVEL",
+      "TASKQ_MAX_DAG_DEPTH",
+      "TASKQ_MAX_WORKERS",
+      "TASKQ_PLUGINS",
+      "TASKQ_RETRY_LIMIT",
+      "TASKQ_TASK_TIMEOUT"
+    ],
+    "mandatory": []
+  },
+  "infra_services": {
+    "docker_compose_services": [],
+    "required": []
+  },
+  "schema_version": 1,
+  "source_sha256": "addb41b90d0b3f14cef84b4fc528c3dd22193c8e662fed65ddaa6c8b044ded21"
+}
