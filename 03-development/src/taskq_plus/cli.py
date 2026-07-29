@@ -1,8 +1,10 @@
-"""[FR-01] CLI entry surface.
+"""[FR-01 / FR-02] CLI entry surface.
 
 Citations:
 - SPEC.md §3 FR-01 (任務提交與驗證) lines 72-92
+- SPEC.md §3 FR-02 (任務執行器) lines 94-104
 - TEST_SPEC.md FR-01 ACs (AC-FR-01.1 .. AC-FR-01.7)
+- TEST_SPEC.md FR-02 ACs (AC-FR-02.1 .. AC-FR-02.5)
 - SPEC.md §7 錯誤處理 (行 379-389): validation failures → exit 2
 """
 
@@ -16,6 +18,7 @@ from typing import Sequence
 from pydantic import ValidationError
 
 from taskq_plus.config import config
+from taskq_plus.engines import executor
 from taskq_plus.models.task import TaskSubmission
 from taskq_plus.observability.audit import write_event
 from taskq_plus.storage.task_store import TaskStore
@@ -24,6 +27,7 @@ from taskq_plus.util import utc_now_iso
 
 EXIT_OK = 0
 EXIT_VALIDATION = 2
+EXIT_TIMEOUT = 4
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -32,6 +36,7 @@ def _build_parser() -> argparse.ArgumentParser:
     Citations:
     - SPEC.md §3 FR-01: ``submit "<command>" [--name NAME]
       [--after ID]...``
+    - SPEC.md §3 FR-02: ``run <id>`` / ``run --all``.
     """
     parser = argparse.ArgumentParser(prog="taskq_plus")
     sub = parser.add_subparsers(dest="subcommand", required=True)
@@ -43,6 +48,14 @@ def _build_parser() -> argparse.ArgumentParser:
         action="append",
         default=[],
         help="Existing task id this task depends on (repeatable)",
+    )
+    run = sub.add_parser("run", help="Execute a task")
+    run.add_argument("task_id", nargs="?", default=None, help="Task id to run")
+    run.add_argument(
+        "--all",
+        action="store_true",
+        dest="run_all",
+        help="Run all pending tasks in DAG topological order",
     )
     return parser
 
@@ -126,17 +139,47 @@ def _handle_submit(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _handle_run(args: argparse.Namespace) -> int:
+    """Implement the ``run`` subcommand.
+
+    Citations:
+    - SPEC.md §3 FR-02 lines 96-104 (``run <id>`` / ``run --all``).
+    - AC-FR-02.4: single-task timeout → exit 4.
+    """
+    store = TaskStore(config().task_home / "tasks.json")
+
+    if args.run_all:
+        executor.run_all(store)
+        return EXIT_OK
+
+    if not args.task_id:
+        sys.stderr.write("taskq_plus: run requires a task id or --all\n")
+        return 1
+
+    status, _ = executor.execute_task(store, args.task_id)
+    if status == "timeout":
+        return EXIT_TIMEOUT
+    if status == "missing":
+        sys.stderr.write(f"taskq_plus: unknown task id: {args.task_id}\n")
+        return 1
+    return EXIT_OK
+
+
 def main(argv: Sequence[str]) -> int:
     """Top-level CLI entry (consumed by ``taskq_plus.__main__`` and tests).
 
     Citations:
     - SPEC.md §3 FR-01: ``python -m taskq_plus submit ...``
-    - ``argv`` starts at the subcommand (``argv[0] == "submit"``).
+    - SPEC.md §3 FR-02: ``python -m taskq_plus run <id>`` / ``run --all``.
+    - ``argv`` starts at the subcommand (``argv[0] == "submit" | "run"``).
     """
     parser = _build_parser()
     args = parser.parse_args(list(argv))
     if args.subcommand == "submit":
         return _handle_submit(args)
+    if args.subcommand == "run":
+        return _handle_run(args)
     # argparse ``add_subparsers(required=True)`` guarantees
-    # ``args.subcommand`` is set — no defensive fallback (rule 4).
+    # ``args.subcommand`` is set to one of the registered names — no
+    # defensive fallback (rule 4).
     return 1
