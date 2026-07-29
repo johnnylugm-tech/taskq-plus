@@ -1,23 +1,29 @@
-"""[FR-01 / FR-02] CLI entry surface.
+"""[FR-01 / FR-02 / FR-03] CLI entry surface.
 
 Citations:
 - SPEC.md §3 FR-01 (任務提交與驗證) lines 72-92
 - SPEC.md §3 FR-02 (任務執行器) lines 94-104
+- SPEC.md §3 FR-03 (重試與斷路器) lines 106-115
 - TEST_SPEC.md FR-01 ACs (AC-FR-01.1 .. AC-FR-01.7)
 - TEST_SPEC.md FR-02 ACs (AC-FR-02.1 .. AC-FR-02.5)
+- TEST_SPEC.md FR-03 ACs (AC-FR-03.1 .. AC-FR-03.5)
 - SPEC.md §7 錯誤處理 (行 379-389): validation failures → exit 2
+- SPEC.md §7 錯誤處理 row ``breaker OPEN``: exit 3, stderr
+  ``breaker open``, 不執行 subprocess.
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
+import time
 import uuid
 from typing import Sequence
 
 from pydantic import ValidationError
 
 from taskq_plus.config import config
+from taskq_plus.service import breaker
 from taskq_plus.service import executor
 from taskq_plus.models.task import TaskSubmission
 from taskq_plus.observability.audit import write_event
@@ -27,6 +33,7 @@ from taskq_plus.util import utc_now_iso
 
 EXIT_OK = 0
 EXIT_VALIDATION = 2
+EXIT_BREAKER_OPEN = 3
 EXIT_TIMEOUT = 4
 
 
@@ -145,7 +152,20 @@ def _handle_run(args: argparse.Namespace) -> int:
     Citations:
     - SPEC.md §3 FR-02 lines 96-104 (``run <id>`` / ``run --all``).
     - AC-FR-02.4: single-task timeout → exit 4.
+    - SPEC.md §3 FR-03 lines 112-115: breaker check BEFORE any
+      subprocess; final failure feeds ``record_failure``; success
+      feeds ``record_success``; OPEN rejection → exit 3 + stderr
+      ``breaker open``.
     """
+    # AC-FR-03.3 / SPEC.md §3 FR-03 step 2: the breaker gate runs
+    # BEFORE we touch the task store or spawn anything, so a rejected
+    # run leaves the task ``pending`` (test_fr03 case 3 invariant).
+    try:
+        breaker.assert_closed()
+    except breaker.BreakerOpen:
+        sys.stderr.write("breaker open\n")
+        return EXIT_BREAKER_OPEN
+
     store = TaskStore(config().task_home / "tasks.json")
 
     if args.run_all:
@@ -156,7 +176,14 @@ def _handle_run(args: argparse.Namespace) -> int:
         sys.stderr.write("taskq_plus: run requires a task id or --all\n")
         return 1
 
-    status, _ = executor.execute_task(store, args.task_id)
+    status, _ = executor.execute_task(store, args.task_id, sleep=time.sleep)
+
+    # SPEC.md §3 FR-03: only POST-RETRY final outcomes feed the breaker.
+    if status in ("failed", "timeout"):
+        breaker.record_failure()
+    elif status == "done":
+        breaker.record_success()
+
     if status == "timeout":
         return EXIT_TIMEOUT
     if status == "missing":

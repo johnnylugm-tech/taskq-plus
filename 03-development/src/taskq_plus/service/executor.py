@@ -1,10 +1,13 @@
-"""[FR-02] 任務執行器:subprocess 執行 + DAG 拓撲排程.
+"""[FR-02 / FR-03] 任務執行器:subprocess 執行 + DAG 拓撲排程 + 重試.
 
 Citations:
 - SPEC.md §3 FR-02 lines 94-104 (執行器狀態機、結果欄位、
   ``ThreadPoolExecutor`` 並發、單任務 timeout → exit 4).
+- SPEC.md §3 FR-03 line 108: ``failed`` / ``timeout`` 自動重試上限
+  ``TASKQ_RETRY_LIMIT`` 次;第 n 次重試前等待
+  ``TASKQ_BACKOFF_BASE × 2^n`` 秒 (sleep 函式必須可注入以利測試).
 - SPEC.md §6 NFR-03: 共享 ``threading.Lock`` 序列化存儲寫入.
-- TEST_SPEC.md FR-02 ACs AC-FR-02.1..5.
+- TEST_SPEC.md FR-02 ACs AC-FR-02.1..5; FR-03 ACs AC-FR-03.1.
 - SPEC.md §8 #15: 任何 ``subprocess.run`` 不得使用 shell-true 旗標.
 """
 
@@ -16,7 +19,7 @@ import subprocess
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any
+from typing import Any, Callable
 
 from taskq_plus.storage.task_store import TaskStore
 from taskq_plus.util import utc_now_iso
@@ -44,6 +47,16 @@ def _resolve_timeout() -> float:
 def _resolve_max_workers() -> int:
     """Return ``$TASKQ_MAX_WORKERS`` as int (default 4)."""
     return int(os.environ.get("TASKQ_MAX_WORKERS", "4"))
+
+
+def _resolve_retry_limit() -> int:
+    """Return ``$TASKQ_RETRY_LIMIT`` as int (default 2, SPEC.md §5 line 297)."""
+    return int(os.environ.get("TASKQ_RETRY_LIMIT", "2"))
+
+
+def _resolve_backoff_base() -> float:
+    """Return ``$TASKQ_BACKOFF_BASE`` as float (default 0.1s, SPEC.md §5)."""
+    return float(os.environ.get("TASKQ_BACKOFF_BASE", "0.1"))
 
 
 def _truncate(text: str, limit: int = TAIL_MAX) -> str:
@@ -112,6 +125,43 @@ def run_subprocess(command: str, timeout: float) -> subprocess.CompletedProcess:
     )
 
 
+def _attempt_once(
+    command: str, timeout: float
+) -> tuple[str, int, str, str, int]:
+    """Run a single subprocess attempt and return the FR-02 result fields.
+
+    Returns ``(status, exit_code, stdout_tail, stderr_tail, duration_ms)``
+    where ``status`` is one of ``"done"`` / ``"failed"`` / ``"timeout"``.
+    The caller (``execute_task``) decides whether to retry based on
+    ``status`` (SPEC.md §3 FR-03: retry on ``failed`` / ``timeout``).
+    """
+    start = time.monotonic()
+    try:
+        result = run_subprocess(command, timeout)
+    except subprocess.TimeoutExpired as exc:
+        duration_ms = int((time.monotonic() - start) * 1000)
+        return (
+            "timeout",
+            -1,
+            _truncate(_decode_stream(getattr(exc, "stdout", None))),
+            _truncate(_decode_stream(getattr(exc, "stderr", None))),
+            duration_ms,
+        )
+    except FileNotFoundError as exc:
+        duration_ms = int((time.monotonic() - start) * 1000)
+        return ("failed", 127, "", _truncate(str(exc)), duration_ms)
+    duration_ms = int((time.monotonic() - start) * 1000)
+    exit_code = int(result.returncode)
+    status = "done" if exit_code == 0 else "failed"
+    return (
+        status,
+        exit_code,
+        _truncate(result.stdout or ""),
+        _truncate(result.stderr or ""),
+        duration_ms,
+    )
+
+
 def _kahn_waves(tasks: dict[str, dict[str, Any]]) -> list[list[str]]:
     """Topological waves of pending tasks (AC-FR-02.3 / FR-06).
 
@@ -147,7 +197,10 @@ def _kahn_waves(tasks: dict[str, dict[str, Any]]) -> list[list[str]]:
 
 
 def execute_task(
-    store: TaskStore, task_id: str
+    store: TaskStore,
+    task_id: str,
+    *,
+    sleep: Callable[[float], Any] = time.sleep,
 ) -> tuple[str, dict[str, Any] | None]:
     """Run a single pending task and persist its terminal record atomically.
 
@@ -159,6 +212,11 @@ def execute_task(
     - AC-FR-02.4: ``TimeoutExpired`` → status ``timeout``; caller maps
       to exit code 4.
     - AC-FR-02.5: stdout / stderr truncated to last ``TAIL_MAX`` chars.
+    - SPEC.md §3 FR-03 / AC-FR-03.1: retry ``failed`` / ``timeout`` up
+      to ``TASKQ_RETRY_LIMIT`` times; nth retry waits
+      ``TASKQ_BACKOFF_BASE × 2^n`` seconds via the INJECTED ``sleep``
+      callable (never ``time.sleep`` directly) so tests can keep the
+      suite wall-clock-free.
 
     Returns the terminal ``status`` plus the saved record (or ``None``
     when the task id is unknown).
@@ -169,28 +227,25 @@ def execute_task(
         return "missing", None
 
     timeout = _resolve_timeout()
-    start = time.monotonic()
+    retry_limit = _resolve_retry_limit()
+    backoff_base = _resolve_backoff_base()
+    command = task.get("command", "")
 
-    try:
-        result = run_subprocess(task.get("command", ""), timeout)
-    except subprocess.TimeoutExpired as exc:
-        duration_ms = int((time.monotonic() - start) * 1000)
-        exit_code = -1
-        stdout_tail = _truncate(_decode_stream(getattr(exc, "stdout", None)))
-        stderr_tail = _truncate(_decode_stream(getattr(exc, "stderr", None)))
-        status = "timeout"
-    except FileNotFoundError as exc:
-        duration_ms = int((time.monotonic() - start) * 1000)
-        exit_code = 127
-        stdout_tail = ""
-        stderr_tail = _truncate(str(exc))
-        status = "failed"
-    else:
-        duration_ms = int((time.monotonic() - start) * 1000)
-        exit_code = int(result.returncode)
-        stdout_tail = _truncate(result.stdout or "")
-        stderr_tail = _truncate(result.stderr or "")
-        status = "done" if exit_code == 0 else "failed"
+    status = "failed"
+    exit_code = -1
+    stdout_tail = ""
+    stderr_tail = ""
+    duration_ms = 0
+
+    for attempt in range(retry_limit + 1):
+        if attempt > 0:
+            # AC-FR-03.1: nth retry waits ``backoff_base × 2^n`` (n=0,1,...)
+            sleep(backoff_base * (2 ** (attempt - 1)))
+        status, exit_code, stdout_tail, stderr_tail, duration_ms = _attempt_once(
+            command, timeout
+        )
+        if status == "done":
+            break  # success — no retry needed (SPEC.md §3 FR-03)
 
     finished_at = _unique_finished_at()
 
