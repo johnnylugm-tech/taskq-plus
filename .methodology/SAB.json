@@ -109,7 +109,9 @@
         "taskq_plus.models",
         "taskq_plus.observability",
         "taskq_plus.storage",
-        "taskq_plus.util"
+        "taskq_plus.util",
+        "taskq_plus.engines",
+        "taskq_plus.engines.executor"
       ],
       "allowed_dependencies": []
     }
