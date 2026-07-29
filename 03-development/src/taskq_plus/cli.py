@@ -18,7 +18,7 @@ from typing import Sequence
 from pydantic import ValidationError
 
 from taskq_plus.config import config
-from taskq_plus.engines import executor
+from taskq_plus.service import executor
 from taskq_plus.models.task import TaskSubmission
 from taskq_plus.observability.audit import write_event
 from taskq_plus.storage.task_store import TaskStore
