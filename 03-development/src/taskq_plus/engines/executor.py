@@ -29,11 +29,10 @@ TAIL_MAX = 2000
 # concurrent writes cannot leave ``tasks.json`` mid-write.
 _tasks_store_lock = threading.Lock()
 
-# Thread-safe monotonic timestamp sequence — guarantees distinct
+# Thread-safe monotonic timestamp — guarantees distinct
 # ``finished_at`` values for the AC2-finished_at-distinct assertion
 # even when multiple tasks complete within the same microsecond.
 _timestamp_lock = threading.Lock()
-_timestamp_seq = 0
 _last_timestamp = ""
 
 
@@ -77,23 +76,19 @@ def _decode_stream(stream: Any) -> str:
 def _unique_finished_at() -> str:
     """Return a UTC ISO-8601 timestamp strictly greater than the last call.
 
-    The monotonic counter below ``_last_timestamp`` guarantees two
-    threads that hit ``utc_now_iso()`` in the same microsecond still
-    produce distinct strings (NP-13 / FR-06 topo-order assertion).
+    The monotonic guard guarantees two threads that hit ``utc_now_iso()``
+    in the same microsecond still produce distinct strings (NP-13 /
+    FR-06 topo-order assertion).
     """
-    global _timestamp_seq, _last_timestamp
+    global _last_timestamp
     with _timestamp_lock:
         ts = utc_now_iso()
-        _timestamp_seq += 1
         if ts <= _last_timestamp:
-            # Bump one microsecond past the last issued timestamp.
-            ts = _last_timestamp
-            # ISO-8601 with microsecond precision; rewrite the last
-            # 6 digits so order remains chronologically ascending.
-            head, dot, tail = ts.rpartition(".")
+            # ISO-8601 with microsecond precision; bump the last
+            # 6 digits by one so order remains chronologically ascending.
+            head, dot, tail = _last_timestamp.rpartition(".")
             micros = int(tail[:6]) if dot else 0
-            micros += 1
-            ts = f"{head}.{micros:06d}"
+            ts = f"{head}.{micros + 1:06d}"
         _last_timestamp = ts
         return ts
 
