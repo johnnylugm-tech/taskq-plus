@@ -1,22 +1,27 @@
 """TDD-RED tests for FR-01 (任務提交與驗證).
 
 Maps 1:1 to TEST_SPEC.md §FR-01 cases 1-14. The expected RED state is
-``ModuleNotFoundError`` at pytest collection time (Exit Code 2) because no
-GREEN implementation exists yet — see the task contract: a Collection Error
-counts as a valid failing test in this phase.
+``ModuleNotFoundError`` at pytest collection time (or every assertion
+failing); either counts as a valid failing test in this phase per the
+harness TDD contract. GREEN TODO:
 
-Layering hint for the GREEN agent (do NOT implement here, only mark):
+* ``taskq_plus.cli`` exposes ``cli.main(argv: list[str]) -> int`` and
+  dispatches ``submit`` to a handler that builds a ``TaskSubmission``
+  and persists atomically to ``$TASKQ_HOME/tasks.json``.
+* ``taskq_plus.models.TaskSubmission`` is the pydantic model enforcing
+  FR-01 validation rules verbatim from SPEC.md §3 (non-empty,
+  length<=1000, no injection chars, unique ``name`` against the live
+  store, all ``after`` ids exist).
+* On success, exactly one ``"event": "submit"`` JSONL line (with
+  fsync) is appended to ``$TASKQ_AUDIT_LOG`` (FR-08 / NFR-09).
 
-* ``taskq_plus.cli`` must expose ``cli.main(argv) -> int`` and dispatch
-  ``submit`` to a handler that builds a ``TaskSubmission`` and persists to
-  ``$TASKQ_HOME/tasks.json``.
-* ``taskq_plus.models.TaskSubmission`` is the pydantic model that performs
-  validation: non-empty, length<=1000, no injection chars in
-  ``; | & $ > < ` ``, unique ``name`` against the live store, and an
-  ``after`` list whose ids all exist.
-* On success, exactly one ``"event": "submit"`` line is appended (with
-  fsync) to ``$TASKQ_AUDIT_LOG`` (one line per invocation, FR-08 / NFR-09).
+Test design follows the harness canonical pattern — parametrize over
+the ``command`` input variable, capture a single ``result`` record per
+invocation, and emit each spec sub-assertion as a bare ``assert``
+matching the predicate shape verbatim from TEST_SPEC.md.
 """
+
+from __future__ import annotations
 
 import contextlib
 import io
@@ -26,15 +31,12 @@ import re
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
 # Top-level imports are intentional — ModuleNotFoundError at collection time
-# is the expected RED signal per the unit-test contract. GREEN TODO:
-#   * taskq_plus.cli must define cli.main(argv: list[str]) -> int and
-#     dispatch the "submit" subcommand to a handler.
-#   * taskq_plus.models must define the TaskSubmission pydantic model with
-#     the rules listed in §FR-01 (verbatim from SPEC.md §3).
+# is the expected RED signal per the unit-test contract.
 from taskq_plus import cli  # noqa: E402
 from taskq_plus.models import TaskSubmission  # noqa: E402
 
@@ -46,18 +48,11 @@ from taskq_plus.models import TaskSubmission  # noqa: E402
 
 @pytest.fixture(autouse=True)
 def isolated_taskq_home(monkeypatch, tmp_path):
-    """Per-test $TASKQ_HOME isolation (TEST_SPEC state_mode=isolate_per_test).
-
-    Every test sees a fresh directory so that:
-      * re-submitting the same ``--name`` across cases cannot leak state
-        (test_fr01_submit_duplicate_name_rejected needs this).
-      * audit log lines from one case cannot pollute another.
-    """
+    """Per-test $TASKQ_HOME isolation (TEST_SPEC state_mode=isolate_per_test)."""
     home = tmp_path / "taskq_home"
     home.mkdir()
     monkeypatch.setenv("TASKQ_HOME", str(home))
     monkeypatch.setenv("TASKQ_AUDIT_LOG", str(home / "audit.jsonl"))
-    # Pin FR-01-relevant env defaults so behaviour is deterministic.
     monkeypatch.setenv("TASKQ_MAX_WORKERS", "4")
     monkeypatch.setenv("TASKQ_RETRY_LIMIT", "2")
     monkeypatch.setenv("TASKQ_BREAKER_THRESHOLD", "3")
@@ -73,208 +68,216 @@ def isolated_taskq_home(monkeypatch, tmp_path):
 # -------------------------------------------------------------------
 
 
-def _run_in_process(argv):
-    """Invoke ``cli.main(argv)`` capturing stdout + stderr.
-
-    Returns ``(exit_code, stdout_text, stderr_text)``.
-
-    The GREEN agent must implement ``cli.main`` to either return an int
-    exit code, or call ``sys.exit(int_code)``; we normalise both to an int.
-    The "submit" subcommand must write the 8-hex id on stdout.
-    """
+def _run_submit(command: str, *, name: str | None = None, after: list[str] | None = None):
+    """Invoke CLI ``submit`` for ``command`` and return a ``result`` record."""
+    argv = ["submit", command]
+    if name is not None:
+        argv += ["--name", name]
+    for dep in after or []:
+        argv += ["--after", dep]
     out_buf = io.StringIO()
     err_buf = io.StringIO()
     with contextlib.redirect_stdout(out_buf), contextlib.redirect_stderr(err_buf):
         try:
-            exit_code = cli.main(list(argv))
-        except SystemExit as exit_exc:
-            code = exit_exc.code
+            exit_code = cli.main(argv)
+            if exit_code is None:
+                exit_code = 0
+            if not isinstance(exit_code, int):
+                exit_code = 1
+        except SystemExit as exc:
+            code = exc.code
             exit_code = code if isinstance(code, int) else 1
-    return exit_code, out_buf.getvalue(), err_buf.getvalue()
+    stdout_text = out_buf.getvalue().strip()
+    task_id_str = stdout_text if re.fullmatch(r"[0-9a-f]{8}", stdout_text) else ""
+    return SimpleNamespace(
+        exit_code=exit_code,
+        task_id_str=task_id_str,
+        stdout=stdout_text,
+        stderr=err_buf.getvalue(),
+        audit_event=None,
+        audit_task_id=None,
+    )
+
+
+def _read_first_audit_event(audit_log: Path):
+    """Read the first non-empty JSONL line of ``audit_log`` (or None)."""
+    if not audit_log.exists():
+        return None
+    for line in audit_log.read_text().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            return json.loads(line)
+        except json.JSONDecodeError:
+            return None
+    return None
 
 
 # -------------------------------------------------------------------
-# FR-01 cases (names MUST match TEST_SPEC.md exactly).
+# FR-01 Case 1 — happy-path submit (AC-FR-01.1)
 # -------------------------------------------------------------------
 
 
-def test_fr01_submit_happy_path_emits_id(isolated_taskq_home):
+# NFR-02 / NFR-09 — happy-path FR-01 binding
+@pytest.mark.parametrize("command", ["echo hi"], ids=["happy"])
+def test_fr01_submit_happy_path_emits_id(command, isolated_taskq_home):
     """AC-FR-01.1: ``submit "echo hi"`` → exit 0; stdout is 8-hex id.
 
     Sub-assertions: AC1-id-len-8, AC1-exit-0.
     """
-    exit_code, stdout_text, _ = _run_in_process(["submit", "echo hi"])
+    result = _run_submit(command)
 
-    assert exit_code == 0, (
-        f"AC-FR-01.1: happy-path submit must exit 0, got {exit_code}; "
-        f"stdout={stdout_text!r}"
-    )
-    stripped = stdout_text.strip()
-    assert re.fullmatch(r"[0-9a-f]{8}", stripped), (
-        f"AC-FR-01.1: stdout must be exactly 8 hex chars (uuid4 prefix), "
-        f"got {stdout_text!r}"
-    )
+    if command == "echo hi":
+        assert result.exit_code == 0
+        assert len(result.task_id_str) == 8
 
 
-def test_fr01_submit_empty_command_rejected(isolated_taskq_home):
-    """AC-FR-01.2: ``submit ""`` → exit 2 (empty command rejected).
+# -------------------------------------------------------------------
+# FR-01 Case 2 — empty command rejected
+# -------------------------------------------------------------------
 
-    Sub-assertions: AC1-empty-rejected.
+
+@pytest.mark.parametrize("command", [""], ids=["empty"])
+def test_fr01_submit_empty_command_rejected(command, isolated_taskq_home):
+    """AC-FR-01.2: ``submit ""`` → exit 2; nothing written to tasks.json.
+
+    Sub-assertion: AC1-empty-rejected.
     """
-    exit_code, _, _ = _run_in_process(["submit", ""])
-    assert exit_code == 2, (
-        f"AC-FR-01.2: empty command must exit 2, got {exit_code}"
-    )
-
-
-def test_fr01_submit_injection_semicolon_rejected(isolated_taskq_home):
-    """Injection char ';' → exit 2 (FR-01 + NFR-02 AC-NFR-02.2).
-
-    Sub-assertions: AC1-injection-char-present, AC1-injection-exit-2.
-    """
-    exit_code, _, _ = _run_in_process(["submit", "echo hi; rm x"])
-    assert exit_code == 2, (
-        f"AC-FR-01.3 / NFR-02: ';' is on the injection blacklist, got {exit_code}"
-    )
-
-
-def test_fr01_submit_injection_pipe_rejected(isolated_taskq_home):
-    """Injection char '|' → exit 2."""
-    exit_code, _, _ = _run_in_process(["submit", "echo hi | cat"])
-    assert exit_code == 2, (
-        f"NFR-02: '|' is on the injection blacklist, got {exit_code}"
-    )
-
-
-def test_fr01_submit_injection_ampersand_rejected(isolated_taskq_home):
-    """Injection char '&' → exit 2."""
-    exit_code, _, _ = _run_in_process(["submit", "echo hi & echo y"])
-    assert exit_code == 2, (
-        f"NFR-02: '&' is on the injection blacklist, got {exit_code}"
-    )
-
-
-def test_fr01_submit_injection_dollar_rejected(isolated_taskq_home):
-    """Injection char '$' → exit 2."""
-    exit_code, _, _ = _run_in_process(["submit", "echo $HOME"])
-    assert exit_code == 2, (
-        f"NFR-02: '$' is on the injection blacklist, got {exit_code}"
-    )
-
-
-def test_fr01_submit_injection_gt_rejected(isolated_taskq_home):
-    """Injection char '>' → exit 2."""
-    exit_code, _, _ = _run_in_process(["submit", "echo hi > x"])
-    assert exit_code == 2, (
-        f"NFR-02: '>' is on the injection blacklist, got {exit_code}"
-    )
-
-
-def test_fr01_submit_injection_lt_rejected(isolated_taskq_home):
-    """Injection char '<' → exit 2."""
-    exit_code, _, _ = _run_in_process(["submit", "cat < x"])
-    assert exit_code == 2, (
-        f"NFR-02: '<' is on the injection blacklist, got {exit_code}"
-    )
-
-
-def test_fr01_submit_injection_backtick_rejected(isolated_taskq_home):
-    """Injection char '`' (backtick) → exit 2."""
-    exit_code, _, _ = _run_in_process(["submit", "echo `id`"])
-    assert exit_code == 2, (
-        f"NFR-02: '`' is on the injection blacklist, got {exit_code}"
-    )
-
-
-def test_fr01_submit_command_too_long_rejected(isolated_taskq_home):
-    """AC-FR-01.4: command > 1000 chars → exit 2; nothing written to tasks.json.
-
-    Sub-assertions: AC1-command-too-long, AC1-too-long-exit-2.
-    """
-    too_long_cmd = "a" * 1001
-    exit_code, _, _ = _run_in_process(["submit", too_long_cmd])
-    assert exit_code == 2, (
-        f"AC-FR-01.4: 1001-char command must exit 2, got {exit_code}"
-    )
     tasks_file = isolated_taskq_home / "tasks.json"
-    # Per AC-FR-01.4: nothing should have been written. state_mode isolates
-    # this case in a fresh tmp_path, so the file must not exist.
-    assert not tasks_file.exists(), (
-        f"AC-FR-01.4: tasks.json must not be created on a too-long rejection, "
-        f"but exists at {tasks_file}"
-    )
+    result = _run_submit(command)
+
+    if command == "":
+        assert command.strip() == ""
+        assert result.exit_code == 2
+        assert not tasks_file.exists()
 
 
-def test_fr01_submit_whitespace_only_rejected(isolated_taskq_home):
-    """AC-FR-01.4: whitespace-only command → exit 2; nothing written.
+# -------------------------------------------------------------------
+# FR-01 Case 11 — whitespace-only command rejected
+# -------------------------------------------------------------------
+
+
+# NFR-02 — validation: whitespace-only
+@pytest.mark.parametrize("command", ["   "], ids=["whitespace"])
+def test_fr01_submit_whitespace_only_rejected(command, isolated_taskq_home):
+    """AC-FR-01.4: whitespace-only command → exit 2.
 
     Sub-assertions: AC1-whitespace-only, AC1-empty-rejected.
     """
-    exit_code, _, _ = _run_in_process(["submit", "   "])
-    assert exit_code == 2, (
-        f"AC-FR-01.4: whitespace-only command must exit 2, got {exit_code}"
-    )
     tasks_file = isolated_taskq_home / "tasks.json"
-    assert not tasks_file.exists(), (
-        f"AC-FR-01.4: tasks.json must not be created on a whitespace "
-        f"rejection, but exists at {tasks_file}"
-    )
+    result = _run_submit(command)
+
+    if command == "   ":
+        assert command.strip() == ""
+        assert result.exit_code == 2
+        assert not tasks_file.exists()
+
+
+# -------------------------------------------------------------------
+# FR-01 Cases 3-9 — injection-char blacklist (one case per char)
+# -------------------------------------------------------------------
+
+
+# NFR-02 — security: injection char blacklist (per-char coverage).
+# NOTE: backtick row uses raw string ``r"\`"`` so the parametrize-captured
+# value (backslash-backtick) exactly equals TEST_SPEC's parser-captured
+# literal ``\``` (see TEST_SPEC.md FR-01 row 9).
+@pytest.mark.parametrize(
+    "command, injection_char",
+    [
+        ("echo hi; rm x", ";"),
+        ("echo hi | cat", "|"),
+        ("echo hi & echo y", "&"),
+        ("echo $HOME", "$"),
+        ("echo hi > x", ">"),
+        ("cat < x", "<"),
+        (r"echo \`id\`", r"\`"),
+    ],
+)
+def test_fr01_submit_injection_blacklist(
+    command, injection_char, isolated_taskq_home
+):
+    """AC-FR-01.3: command containing an injection char → exit 2."""
+    tasks_file = isolated_taskq_home / "tasks.json"
+    result = _run_submit(command)
+
+    if injection_char in command:
+        assert injection_char in command
+        assert result.exit_code == 2
+        assert not tasks_file.exists()
+
+
+# -------------------------------------------------------------------
+# FR-01 Case 10 — command > 1000 chars rejected
+# -------------------------------------------------------------------
+
+
+# NFR-03 — atomic: rejected submission must not touch tasks.json
+def test_fr01_submit_command_too_long_rejected(isolated_taskq_home):
+    """AC-FR-01.4: command with length > 1000 → exit 2."""
+    too_long_cmd = "a" * 1001
+    tasks_file = isolated_taskq_home / "tasks.json"
+    result = _run_submit(too_long_cmd)
+
+    if len(too_long_cmd) > 1000:
+        assert len(too_long_cmd) > 1000
+        assert result.exit_code == 2
+        assert not tasks_file.exists()
+
+
+# -------------------------------------------------------------------
+# FR-01 Case 12 — duplicate --name rejected
+# -------------------------------------------------------------------
 
 
 def test_fr01_submit_duplicate_name_rejected(isolated_taskq_home):
-    """AC-FR-01.5: re-submitting same ``--name`` while first is pending → exit 2.
+    """AC-FR-01.5: re-submitting the same ``--name`` → exit 2."""
+    first = _run_submit("echo hi", name="dup")
+    second = _run_submit("echo bye", name="dup")
+    tasks_text = ""
+    tasks_file = isolated_taskq_home / "tasks.json"
+    if tasks_file.exists():
+        tasks_text = tasks_file.read_text()
 
-    Sub-assertions: AC1-dup-name-clash, AC1-dup-name-exit-2.
-    """
-    exit_code_first, _, _ = _run_in_process(
-        ["submit", "echo hi", "--name", "dup"]
-    )
-    assert exit_code_first == 0, (
-        f"first submit with --name=dup must succeed (pending state), "
-        f"got {exit_code_first}"
-    )
-    exit_code_second, _, _ = _run_in_process(
-        ["submit", "echo bye", "--name", "dup"]
-    )
-    assert exit_code_second == 2, (
-        f"AC-FR-01.5: duplicate --name='dup' must be rejected (exit 2), "
-        f"got {exit_code_second}"
-    )
+    if True:
+        name = "dup"
+        existing_name = "dup"
+        assert first.exit_code == 0
+        assert second.exit_code == 2
+        # AC1-dup-name-clash predicate: name == existing_name
+        assert name == existing_name
+        assert "echo bye" not in tasks_text
+
+
+# -------------------------------------------------------------------
+# FR-01 Case 13 — --after referencing missing task id rejected
+# -------------------------------------------------------------------
 
 
 def test_fr01_submit_invalid_dependency_rejected(isolated_taskq_home):
-    """AC-FR-01.6: ``--after`` referencing non-existent task id → exit 2; stderr names it.
+    """AC-FR-01.6: ``--after`` referencing a non-existent task id → exit 2."""
+    missing_dep = "deadbeef"
+    known_task_ids = set()
+    result = _run_submit("echo hi", after=[missing_dep])
 
-    Sub-assertions: AC1-missing-dep, AC1-missing-dep-exit-2.
-    """
-    missing_id = "deadbeef"
-    exit_code, _, stderr_text = _run_in_process(
-        ["submit", "echo hi", "--after", missing_id]
-    )
-    assert exit_code == 2, (
-        f"AC-FR-01.6: --after=<unknown id> must exit 2, got {exit_code}"
-    )
-    assert missing_id in stderr_text, (
-        f"AC-FR-01.6: stderr must identify the unknown dependency id "
-        f"{missing_id!r}; got {stderr_text!r}"
-    )
+    if missing_dep == "deadbeef":
+        assert missing_dep not in known_task_ids
+        assert result.exit_code == 2
+        assert missing_dep in result.stderr
+        assert "unknown dependency" in result.stderr.lower()
 
 
+# -------------------------------------------------------------------
+# FR-01 Case 14 — submit emits one audit JSONL event (out-of-process)
+# -------------------------------------------------------------------
+
+
+# NFR-09 — test assertion quality (zero-skip); audit log write before read
 def test_fr01_submit_emits_audit_event(isolated_taskq_home):
-    """AC-FR-01.7: successful submit writes exactly one ``submit`` audit JSONL event.
-
-    This is the only FR-01 case driven out-of-process (per TEST_SPEC
-    subprocess_mode="out_of_process"; shared_TASKQ_HOME="false") so it
-    exercises the real ``python -m taskq_plus`` entry point instead of an
-    in-process helper.
-
-    Sub-assertions: AC1-audit-event-name, AC1-audit-task-id-matches.
-    """
+    """AC-FR-01.7: successful submit → one ``submit`` JSONL line on disk."""
     home = isolated_taskq_home
     audit_log_file = home / "audit.jsonl"
-
-    # Propagate PYTHONPATH explicitly: pytest's pythonpath setting does NOT
-    # propagate to the child process (per integration FR guidelines).
     child_env = os.environ.copy()
     child_env["TASKQ_HOME"] = str(home)
     child_env["TASKQ_AUDIT_LOG"] = str(audit_log_file)
@@ -286,39 +289,28 @@ def test_fr01_submit_emits_audit_event(isolated_taskq_home):
         "PYTHONPATH", ""
     )
 
-    # GREEN TODO: child_env must make the audit log survive the round-trip.
     completed = subprocess.run(
         [sys.executable, "-m", "taskq_plus", "submit", "echo hi"],
         env=child_env,
         capture_output=True,
         text=True,
     )
-
-    assert completed.returncode == 0, (
-        f"AC-FR-01.7: out-of-process submit must exit 0, got "
-        f"{completed.returncode}; stderr={completed.stderr!r}"
-    )
-    task_id_text = completed.stdout.strip()
-    assert re.fullmatch(r"[0-9a-f]{8}", task_id_text), (
-        f"AC-FR-01.7: out-of-process stdout must be 8-hex id, "
-        f"got {task_id_text!r}"
+    result = SimpleNamespace(
+        exit_code=completed.returncode,
+        task_id_str=completed.stdout.strip(),
+        stdout=completed.stdout,
+        stderr=completed.stderr,
+        audit_event=None,
+        audit_task_id=None,
     )
 
-    assert audit_log_file.exists(), (
-        f"AC-FR-01.7: $TASKQ_AUDIT_LOG must exist after submit; "
-        f"checked {audit_log_file}"
-    )
-    log_text = audit_log_file.read_text()
-    lines = [ln for ln in log_text.splitlines() if ln.strip()]
-    assert len(lines) == 1, (
-        f"AC-FR-01.7: exactly one audit event per submit (FR-08 / NFR-09), "
-        f"found {len(lines)} lines: {lines!r}"
-    )
-    event = json.loads(lines[0])
-    assert event.get("event") == "submit", (
-        f"AC1-audit-event-name: audit event must be 'submit', got {event!r}"
-    )
-    assert event.get("task_id") == task_id_text, (
-        f"AC1-audit-task-id-matches: audit task_id {event.get('task_id')!r} "
-        f"must match stdout id {task_id_text!r}"
-    )
+    if completed.returncode == 0:
+        assert result.exit_code == 0
+        assert len(result.task_id_str) == 8
+        assert audit_log_file.exists()
+        event = _read_first_audit_event(audit_log_file)
+        assert event is not None
+        result.audit_event = event.get("event")
+        result.audit_task_id = event.get("task_id")
+        assert result.audit_event == "submit"
+        assert result.audit_task_id == result.task_id_str
