@@ -504,3 +504,305 @@ def test_fr02_stdout_tail_truncated_2000_chars(isolated_taskq_home):
     # AC2-tail-is-suffix — raw_output is 'a' * 3000, so the tail
     # is 'a' * 2000.
     assert result.stdout_tail == raw_output[-2000:]
+
+
+# -------------------------------------------------------------------
+# In-process unit tests for executor module internals
+# (Coverage — these exercise executor.py source lines that the
+# out-of-process CLI tests cannot measure.)
+# -------------------------------------------------------------------
+
+
+def test_fr02_executor_resolve_max_workers_in_process():
+    """Cover executor._resolve_max_workers body (line 46)."""
+    from taskq_plus.service import executor
+
+    # Fixture sets TASKQ_MAX_WORKERS=4; the body parses it as int.
+    assert executor._resolve_max_workers() == 4
+    # Custom override via monkeypatched env.
+    os.environ["TASKQ_MAX_WORKERS"] = "7"
+    try:
+        assert executor._resolve_max_workers() == 7
+    finally:
+        os.environ["TASKQ_MAX_WORKERS"] = "4"
+
+
+def test_fr02_executor_truncate_in_process():
+    """Cover executor._truncate: empty (line 56), short (line 58), long (line 59)."""
+    from taskq_plus.service import executor
+
+    # Empty path — line 56.
+    assert executor._truncate("") == ""
+    # Short text (len <= limit) — line 58.
+    assert executor._truncate("abc") == "abc"
+    # Long text — line 59 — returns the trailing ``limit`` chars.
+    assert executor._truncate("a" * 3000, 2000) == "a" * 2000
+    # Custom limit.
+    assert executor._truncate("abcdef", 3) == "def"
+
+
+def test_fr02_executor_decode_stream_in_process():
+    """Cover executor._decode_stream: None (line 70), bytes (line 72), str (line 73)."""
+    from taskq_plus.service import executor
+
+    # None — surfaces "" so the truncate call is harmless.
+    assert executor._decode_stream(None) == ""
+    # Bytes — decoded via utf-8 with errors=replace (line 72).
+    assert executor._decode_stream(b"hi") == "hi"
+    # Str — passed through unchanged (line 73).
+    assert executor._decode_stream("already-a-string") == "already-a-string"
+
+
+def test_fr02_executor_unique_finished_at_bump_in_process(monkeypatch):
+    """Cover executor._unique_finished_at bump branch (lines 89-91)."""
+    from taskq_plus.service import executor
+
+    # Force the ``ts <= _last_timestamp`` branch by setting the
+    # module-global _last_timestamp to a far-future ISO timestamp;
+    # any utc_now_iso() call will be <= this and trigger the bump.
+    future_ts = "2099-01-01T00:00:00.000000+00:00"
+    monkeypatch.setattr(executor, "_last_timestamp", future_ts)
+
+    bumped = executor._unique_finished_at()
+    assert bumped.startswith("2099-01-01T00:00:00.")
+    # Bump micros by one — the microsecond field advances.
+    assert bumped != future_ts
+    # A second call in the same epoch keeps advancing.
+    bumped2 = executor._unique_finished_at()
+    assert bumped2 > bumped or (
+        bumped2.startswith("2099-01-01T00:00:00.") and bumped2 != bumped
+    )
+
+
+def test_fr02_executor_kahn_waves_empty_in_process():
+    """Cover executor._kahn_waves: empty tasks dict (lines 122-146)."""
+    from taskq_plus.service import executor
+
+    # Empty input — pending set is empty, while loop is skipped, returns [].
+    assert executor._kahn_waves({}) == []
+
+
+def test_fr02_executor_kahn_waves_single_node_in_process():
+    """Cover executor._kahn_waves: single node, no deps (lines 122-146)."""
+    from taskq_plus.service import executor
+
+    tasks = {"a": {"status": "pending", "depends_on": []}}
+    assert executor._kahn_waves(tasks) == [["a"]]
+
+
+def test_fr02_executor_kahn_waves_chain_in_process():
+    """Cover executor._kahn_waves: chain a -> b (lines 122-146)."""
+    from taskq_plus.service import executor
+
+    tasks = {
+        "a": {"status": "pending", "depends_on": []},
+        "b": {"status": "pending", "depends_on": ["a"]},
+    }
+    waves = executor._kahn_waves(tasks)
+    assert waves == [["a"], ["b"]]
+
+
+def test_fr02_executor_kahn_waves_diamond_in_process():
+    """Cover executor._kahn_waves: diamond a -> {b, c} -> d (lines 122-146)."""
+    from taskq_plus.service import executor
+
+    tasks = {
+        "a": {"status": "pending", "depends_on": []},
+        "b": {"status": "pending", "depends_on": ["a"]},
+        "c": {"status": "pending", "depends_on": ["a"]},
+        "d": {"status": "pending", "depends_on": ["b", "c"]},
+    }
+    waves = executor._kahn_waves(tasks)
+    assert len(waves) == 3
+    assert waves[0] == ["a"]
+    assert sorted(waves[1]) == ["b", "c"]
+    assert waves[2] == ["d"]
+
+
+def test_fr02_executor_kahn_waves_filters_done_in_process():
+    """Cover executor._kahn_waves: status != pending is filtered (lines 122-124)."""
+    from taskq_plus.service import executor
+
+    tasks = {
+        "a": {"status": "done", "depends_on": []},
+        "b": {"status": "pending", "depends_on": []},
+    }
+    assert executor._kahn_waves(tasks) == [["b"]]
+
+
+def test_fr02_executor_execute_task_missing_in_process(isolated_taskq_home):
+    """Cover executor.execute_task 'missing' return (line 169)."""
+    from taskq_plus.service import executor
+
+    store = TaskStore(isolated_taskq_home / "tasks.json")
+    # No seeded tasks — store.load() returns {} — task_id lookup returns None.
+    status, rec = executor.execute_task(store, "deadbeef")
+    assert status == "missing"
+    assert rec is None
+
+
+def test_fr02_executor_execute_task_timeout_in_process(
+    isolated_taskq_home, monkeypatch
+):
+    """Cover executor.execute_task TimeoutExpired branch (lines 176-181)."""
+    import subprocess as _sp
+
+    from taskq_plus.service import executor
+
+    store = TaskStore(isolated_taskq_home / "tasks.json")
+    store.save(
+        {"abc00001": {"status": "pending", "command": "sleep 99", "depends_on": []}}
+    )
+
+    def fake_run_subprocess(command, timeout):
+        # Both stdout/stderr as bytes exercise the _decode_stream
+        # bytes-decode branch on the timeout path.
+        raise _sp.TimeoutExpired(
+            cmd=command, timeout=timeout, output=b"x-out", stderr=b"y-err"
+        )
+
+    monkeypatch.setattr(executor, "run_subprocess", fake_run_subprocess)
+    status, rec = executor.execute_task(store, "abc00001")
+    assert status == "timeout"
+    assert rec is not None
+    assert rec["status"] == "timeout"
+    assert rec["exit_code"] == -1
+    assert rec["stdout_tail"] == "x-out"
+    assert rec["stderr_tail"] == "y-err"
+
+
+def test_fr02_executor_execute_task_filenotfound_in_process(
+    isolated_taskq_home, monkeypatch
+):
+    """Cover executor.execute_task FileNotFoundError branch (lines 182-187)."""
+    from taskq_plus.service import executor
+
+    store = TaskStore(isolated_taskq_home / "tasks.json")
+    store.save(
+        {
+            "abc00002": {
+                "status": "pending",
+                "command": "no-such-cmd",
+                "depends_on": [],
+            }
+        }
+    )
+
+    def fake_run_subprocess(command, timeout):
+        raise FileNotFoundError("no such executable")
+
+    monkeypatch.setattr(executor, "run_subprocess", fake_run_subprocess)
+    status, rec = executor.execute_task(store, "abc00002")
+    assert status == "failed"
+    assert rec is not None
+    assert rec["exit_code"] == 127
+    assert "no such executable" in rec["stderr_tail"]
+
+
+def test_fr02_executor_execute_task_inner_missing_in_process(
+    isolated_taskq_home, monkeypatch
+):
+    """Cover executor.execute_task inner-missing branch (line 201).
+
+    Scenario: a task exists when ``pre_tasks = store.load()`` is called
+    (so execute_task proceeds past line 169), but is gone by the time
+    ``current = store.load()`` runs inside the lock (so line 201 fires).
+    """
+    from taskq_plus.service import executor
+
+    store = TaskStore(isolated_taskq_home / "tasks.json")
+    store.save(
+        {"abc00003": {"status": "pending", "command": "true", "depends_on": []}}
+    )
+
+    original_load = store.load
+    call_count = {"n": 0}
+
+    def fake_load():
+        call_count["n"] += 1
+        # First call (pre_tasks) returns the seeded task.
+        # Subsequent calls (inside lock) return empty.
+        if call_count["n"] == 1:
+            return {
+                "abc00003": {
+                    "status": "pending",
+                    "command": "true",
+                    "depends_on": [],
+                }
+            }
+        return {}
+
+    monkeypatch.setattr(store, "load", fake_load)
+
+    status, rec = executor.execute_task(store, "abc00003")
+    assert status == "missing"
+    assert rec is None
+
+
+def test_fr02_executor_run_all_in_process(isolated_taskq_home):
+    """Cover executor.run_all happy-path body (lines 225-242)."""
+    from taskq_plus.service import executor
+
+    store = TaskStore(isolated_taskq_home / "tasks.json")
+    store.save(
+        {
+            "abc00010": {
+                "status": "pending",
+                "command": "true",
+                "depends_on": [],
+            },
+            "abc00011": {
+                "status": "pending",
+                "command": "true",
+                "depends_on": ["abc00010"],
+            },
+        }
+    )
+
+    statuses = executor.run_all(store)
+    assert statuses["abc00010"] == "done"
+    assert statuses["abc00011"] == "done"
+    # Both tasks persisted with terminal fields.
+    tasks_map = _tasks_map(isolated_taskq_home)
+    assert tasks_map["abc00010"]["status"] == "done"
+    assert tasks_map["abc00011"]["status"] == "done"
+
+
+def test_fr02_executor_run_all_defensive_failure_in_process(
+    isolated_taskq_home, monkeypatch
+):
+    """Cover executor.run_all except branch (line 239-240).
+
+    Make execute_task raise so the defensive ``except Exception``
+    handler maps the task to ``status="failed"`` and the pool keeps
+    going.
+    """
+    from taskq_plus.service import executor
+
+    store = TaskStore(isolated_taskq_home / "tasks.json")
+    store.save(
+        {
+            "abc00020": {
+                "status": "pending",
+                "command": "true",
+                "depends_on": [],
+            },
+        }
+    )
+
+    def fake_execute_task(s, tid):
+        raise RuntimeError("simulated executor failure")
+
+    monkeypatch.setattr(executor, "execute_task", fake_execute_task)
+
+    statuses = executor.run_all(store)
+    assert statuses["abc00020"] == "failed"
+
+
+def test_fr02_executor_run_all_empty_in_process(isolated_taskq_home):
+    """Cover executor.run_all: no pending tasks (waves == [])."""
+    from taskq_plus.service import executor
+
+    store = TaskStore(isolated_taskq_home / "tasks.json")
+    statuses = executor.run_all(store)
+    assert statuses == {}
