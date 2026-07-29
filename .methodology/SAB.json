@@ -1,0 +1,232 @@
+{
+  "version": "1.0",
+  "created_at": "2026-07-30",
+  "phase": 2,
+  "project": "taskq-plus",
+  "layers": [
+    {
+      "name": "models",
+      "modules": [
+        {
+          "name": "taskq_plus.models.task"
+        },
+        {
+          "name": "taskq_plus.models.errors"
+        }
+      ],
+      "allowed_dependencies": []
+    },
+    {
+      "name": "storage",
+      "modules": [
+        {
+          "name": "taskq_plus.storage.atomic"
+        },
+        {
+          "name": "taskq_plus.storage.task_store"
+        },
+        {
+          "name": "taskq_plus.storage.breaker_store"
+        },
+        {
+          "name": "taskq_plus.storage.cache_store"
+        }
+      ],
+      "allowed_dependencies": [
+        "models",
+        "config"
+      ]
+    },
+    {
+      "name": "service",
+      "modules": [
+        {
+          "name": "taskq_plus.service.executor"
+        },
+        {
+          "name": "taskq_plus.service.breaker"
+        },
+        {
+          "name": "taskq_plus.service.cache"
+        },
+        {
+          "name": "taskq_plus.service.dag"
+        },
+        {
+          "name": "taskq_plus.service.plugins"
+        }
+      ],
+      "allowed_dependencies": [
+        "storage",
+        "models",
+        "config"
+      ]
+    },
+    {
+      "name": "observability",
+      "modules": [
+        {
+          "name": "taskq_plus.observability.audit"
+        },
+        {
+          "name": "taskq_plus.observability.export"
+        }
+      ],
+      "allowed_dependencies": [
+        "service",
+        "storage",
+        "models",
+        "config"
+      ]
+    },
+    {
+      "name": "cli",
+      "modules": [
+        {
+          "name": "taskq_plus.cli.main"
+        },
+        {
+          "name": "taskq_plus.cli.commands"
+        }
+      ],
+      "allowed_dependencies": [
+        "observability",
+        "service",
+        "storage",
+        "models",
+        "config"
+      ]
+    },
+    {
+      "name": "config",
+      "modules": [
+        {
+          "name": "taskq_plus.config"
+        }
+      ],
+      "allowed_dependencies": []
+    }
+  ],
+  "dependencies": {
+    "storage": [
+      "models",
+      "config"
+    ],
+    "service": [
+      "storage",
+      "models",
+      "config"
+    ],
+    "observability": [
+      "service",
+      "storage",
+      "models",
+      "config"
+    ],
+    "cli": [
+      "observability",
+      "service",
+      "storage",
+      "models",
+      "config"
+    ]
+  },
+  "quality_targets": {
+    "max_complexity": 10,
+    "min_coverage": 80,
+    "max_coupling": 0.3
+  },
+  "nfr_dimension_mapping": {
+    "NFR-01": "performance",
+    "NFR-02": "security",
+    "NFR-03": "error_handling",
+    "NFR-04": "security",
+    "NFR-09": "test_assertion_quality",
+    "NFR-11": "readability"
+  },
+  "nfr_traceability": {
+    "NFR-01": {
+      "type": "performance",
+      "target": "submit+status p95 < 50ms (100 iter); toposort p95 < 200ms (200 tasks)",
+      "module": "taskq_plus.service.dag"
+    },
+    "NFR-02": {
+      "type": "security",
+      "target": "bandit HIGH=0 MEDIUM=0; shell=True/eval(/exec( hits = 0",
+      "module": "taskq_plus.service.plugins"
+    },
+    "NFR-03": {
+      "type": "reliability",
+      "target": "4 state files atomic; no bare except; breaker OPEN->CLOSED <= cooldown+1s",
+      "module": "taskq_plus.storage.atomic"
+    },
+    "NFR-04": {
+      "type": "security",
+      "target": "0 secret hits in audit.jsonl and tasks.json",
+      "module": "taskq_plus.observability.audit"
+    },
+    "NFR-05": {
+      "target": "100% public docstrings carrying [FR-XX]/[NFR-XX] (dimension: documentation)",
+      "module": "taskq_plus.cli.commands"
+    },
+    "NFR-06": {
+      "target": "lint-imports exit 0 (dimension: architecture_constraints)",
+      "module": "taskq_plus.config"
+    },
+    "NFR-07": {
+      "target": "0 non-allowlist licenses (dimension: license_compliance)",
+      "module": "taskq_plus.config"
+    },
+    "NFR-08": {
+      "target": "mutation score >= 70 over service/ + storage/ (dimension: mutation_testing)",
+      "module": "taskq_plus.service.executor"
+    },
+    "NFR-09": {
+      "type": "testability",
+      "target": "skipped = 0; zero-assert test functions = 0",
+      "module": "taskq_plus.service.executor"
+    },
+    "NFR-10": {
+      "target": "integration line coverage >= 80 (dimension: integration_coverage)",
+      "module": "taskq_plus.cli.main"
+    },
+    "NFR-11": {
+      "type": "maintainability",
+      "target": "MI >= 80",
+      "module": "taskq_plus.cli.commands"
+    },
+    "NFR-12": {
+      "target": "make verify-system exit 0 (dimension: execute_verification_target)",
+      "module": "taskq_plus.cli.main"
+    }
+  },
+  "advisory_only": [],
+  "gate_score_overrides": {
+    "performance": 75.0,
+    "security": 80.0,
+    "error_handling": 80.0,
+    "test_assertion_quality": 70.0,
+    "readability": 80.0
+  },
+  "fr_module_traceability": {
+    "FR-01": "taskq_plus.models.task",
+    "FR-02": "taskq_plus.service.executor",
+    "FR-03": "taskq_plus.service.breaker",
+    "FR-04": "taskq_plus.service.cache",
+    "FR-05": "taskq_plus.cli.main",
+    "FR-06": "taskq_plus.service.dag",
+    "FR-07": "taskq_plus.service.plugins",
+    "FR-08": "taskq_plus.observability.audit"
+  },
+  "architecture_constraints": [
+    "no_circular_dependencies",
+    "layers: cli > observability > service > storage > models",
+    "config is independence: importable by all layers, imports none",
+    "service/ and storage/ must not import observability (audit/redact are injected ports)"
+  ],
+  "high_risk_modules": [
+    "taskq_plus.service.executor",
+    "taskq_plus.service.plugins",
+    "taskq_plus.storage.task_store"
+  ]
+}

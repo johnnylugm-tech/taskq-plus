@@ -1,0 +1,30 @@
+{
+  "fr": "ADR.md",
+  "review_status": "APPROVE",
+  "reason": "ADR.md (10 records, ADR-001 through ADR-010) covers the full binding architecture: runtime/deps (001), five-layer + import-linter (002), ThreadPoolExecutor + DAG scheduling (003), atomic writes + threading.Lock (004), circuit breaker with binding call sites (005), Kahn topo + cycle/depth guards (006), plugin allowlist regex (007), redaction port (008), CLI surface (009), verify-system make target (010). Each ADR has Status/Context/Decision/Consequences/Alternatives Considered with explicit SPEC and SAD citations; Output Port rule, blocked-doesn't-count rule, and batch-entry breaker gate are all reflected in §3.3 of SAD and reproduced in ADR-002/003/005. Three low-severity gaps: (1) no dedicated ADR for FR-04 cache TTL mechanism despite it being a binding architectural choice with its own s",
+  "citations": [
+    "02-architecture/adr/ADR.md:7",
+    "02-architecture/adr/ADR.md:38",
+    "02-architecture/adr/ADR.md:76",
+    "02-architecture/adr/ADR.md:107",
+    "02-architecture/adr/ADR.md:135",
+    "02-architecture/adr/ADR.md:168",
+    "02-architecture/adr/ADR.md:195",
+    "02-architecture/adr/ADR.md:223",
+    "02-architecture/adr/ADR.md:252",
+    "02-architecture/adr/ADR.md:283",
+    "02-architecture/SAD.md:38",
+    "02-architecture/SAD.md:67",
+    "02-architecture/SAD.md:245",
+    "01-requirements/SRS.md:165",
+    "01-requirements/SRS.md:494",
+    "harness/templates/ADR.md:1"
+  ],
+  "docs_embedded": [
+    "SRS.md",
+    "SAD.md",
+    "ADR.md",
+    "SPEC.md"
+  ],
+  "confidence": 0.9
+}

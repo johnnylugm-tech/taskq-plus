@@ -1,0 +1,20 @@
+{
+  "fr": "SAD.md",
+  "review_status": "APPROVE",
+  "reason": "SAD v1.1.0 satisfies all checklist items: 8 FRs each map to ≥1 module (§2.3 SAD.md:152-160), 12 NFRs each have 目標/落實模組/驗證命令 (§4 SAD.md:304-317), five-layer DAG declared with explicit Output Port rule preventing service→observability import (§2.1 SAD.md:67-77), 4 trust boundaries and 8 STRIDE-lite threats each with single-name verified_by (§6 SAD.md:499-583), SAB:START/SAB:END markers present with phase as bare int (SAD.md:332), all SAB nfr_traceability.type values are from the legal 8 (performance/security/reliability/testability/maintainability). Cross-check: 8 owner_modules in §6 all appear in §5 layers[].modules[]; 8 FR modules and 3 high_risk_modules also match. Round 2 improvements (Output Port rule, hub-module table, blocked-not-counted breaker rule, batch-startup OPEN→exit 3) close ",
+  "citations": [
+    "02-architecture/SAD.md:67",
+    "02-architecture/SAD.md:77",
+    "02-architecture/SAD.md:152",
+    "02-architecture/SAD.md:171",
+    "02-architecture/SAD.md:332",
+    "02-architecture/SAD.md:421",
+    "02-architecture/SAD.md:526",
+    "01-requirements/SRS.md:287"
+  ],
+  "docs_embedded": [
+    "SAD.md",
+    "SRS.md"
+  ],
+  "confidence": 0.9
+}
