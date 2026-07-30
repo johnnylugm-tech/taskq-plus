@@ -1,7 +1,7 @@
 {
   "schema": "harness/traceability/attestation/v1",
-  "git_sha": "faf11ece302aea0348d05025c3ea730ab88544c2",
-  "content_sha256": "4444d09490bdada0249208436c3947ade23983cb31d6a52bd1feb73fa60acd41",
+  "git_sha": "d537e73117f3c598465425536e9a88a4bccb01c3",
+  "content_sha256": "12ab4dbde0bc80a28561b34916004c68daa91285a182229ddd9509bfba0732d0",
   "tool": "scripts/build_trace_attestation.py",
   "overlay_used": null,
   "overlay_errors": [],
@@ -14,7 +14,7 @@
       "code_coverage": "100.0%",
       "test_coverage": "100.0%",
       "verification_rate": "100.0%",
-      "total_links": 52,
+      "total_links": 57,
       "missing_mappings": {
         "fr_without_srs": [],
         "fr_without_code": [],
@@ -38,6 +38,7 @@
           "03-development/src/taskq_plus/models/__init__.py",
           "03-development/src/taskq_plus/models/task.py",
           "03-development/src/taskq_plus/storage/__init__.py",
+          "03-development/src/taskq_plus/storage/atomic.py",
           "03-development/src/taskq_plus/storage/task_store.py"
         ],
         "test_files": [
@@ -52,6 +53,7 @@
         "srs_section": "SAD.md",
         "code_files": [
           "03-development/src/taskq_plus/cli/commands.py",
+          "03-development/src/taskq_plus/models/errors.py",
           "03-development/src/taskq_plus/service/__init__.py",
           "03-development/src/taskq_plus/service/executor.py"
         ],
@@ -69,6 +71,7 @@
           "03-development/src/taskq_plus/cli/commands.py",
           "03-development/src/taskq_plus/service/breaker.py",
           "03-development/src/taskq_plus/service/executor.py",
+          "03-development/src/taskq_plus/storage/atomic.py",
           "03-development/src/taskq_plus/storage/breaker_store.py"
         ],
         "test_files": [
@@ -101,6 +104,8 @@
           "03-development/src/taskq_plus/__main__.py",
           "03-development/src/taskq_plus/cli/commands.py",
           "03-development/src/taskq_plus/cli/main.py",
+          "03-development/src/taskq_plus/config.py",
+          "03-development/src/taskq_plus/models/errors.py",
           "03-development/tests/test_fr05.py"
         ],
         "test_files": [
