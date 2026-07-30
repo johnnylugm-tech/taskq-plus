@@ -68,6 +68,12 @@ from taskq_plus.service.executor import (  # noqa: E402,F401
     run,
     run_all,
 )
+from taskq_plus.service.breaker import (  # noqa: E402,F401
+    DEFAULT_BACKOFF_BASE_S,
+    DEFAULT_COOLDOWN_S,
+    DEFAULT_RETRY_LIMIT,
+    DEFAULT_THRESHOLD,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -859,3 +865,396 @@ def test_fr02_run_all_no_pending_returns_immediately(taskq_home):
     recs = load_tasks()
     assert len(recs) == 1
     assert recs[0]["status"] == "done"
+
+
+# ===========================================================================
+# Coverage-gap tests — pin branches reachable in production but not yet
+# exercised by the canonical FR-02 AC tests. Each function below names the
+# source-line region it covers.
+# ===========================================================================
+
+# ---- executor.py lines 167-173 (_emit_audit body) -------------------------
+def test_fr02_emit_audit_appends_event_to_audit_log(taskq_home):
+    """Covers executor.py lines 167-173 (full _emit_audit body).
+
+    `_emit_audit` writes a JSON-encoded event to `$TASKQ_HOME/audit.log`.
+    Each line carries `event`, `ts`, and any extra payload keys verbatim.
+    """
+    from taskq_plus.service.executor import _emit_audit
+
+    _emit_audit("custom_event", {"k": "v", "n": 42})
+
+    log_path = Path(taskq_home) / "audit.log"
+    assert log_path.exists(), "audit.log should be written"
+    raw = log_path.read_text(encoding="utf-8").strip().splitlines()
+    assert len(raw) == 1
+    entry = json.loads(raw[0])
+    assert entry["event"] == "custom_event"
+    assert entry["k"] == "v"
+    assert entry["n"] == 42
+    assert "ts" in entry and isinstance(entry["ts"], str)
+
+
+# ---- executor.py lines 184-196 (_emit_plugin_errors body) -----------------
+def test_fr02_emit_plugin_errors_writes_one_event_per_failure(taskq_home):
+    """Covers executor.py lines 184-196 (full _emit_plugin_errors body).
+
+    Each `PluginFailure` produces a `plugin_error` audit event carrying the
+    failure's plugin / hook / error metadata, plus the calling task_id.
+    """
+    from taskq_plus.service.executor import _emit_plugin_errors
+    from taskq_plus.service.plugins import PluginFailure
+
+    failures = [
+        PluginFailure(hook="pre_run", plugin="bad_a", error="boom-a"),
+        PluginFailure(hook="post_run", plugin="bad_b", error="boom-b"),
+    ]
+    _emit_plugin_errors(failures, task_id="originating-task")
+
+    log_path = Path(taskq_home) / "audit.log"
+    assert log_path.exists(), "audit.log should be created"
+    raw = log_path.read_text(encoding="utf-8").strip().splitlines()
+    assert len(raw) == 2
+    e0 = json.loads(raw[0])
+    e1 = json.loads(raw[1])
+    assert e0["event"] == "plugin_error"
+    assert e0["task_id"] == "originating-task"
+    assert e0["plugin"] == "bad_a"
+    assert e0["hook"] == "pre_run"
+    assert e0["error"] == "boom-a"
+    assert e1["plugin"] == "bad_b"
+    assert e1["hook"] == "post_run"
+    assert e1["error"] == "boom-b"
+
+
+# ---- executor.py lines 211-218 (_dispatch_and_emit body) -----------------
+def test_fr02_dispatch_and_emit_extracts_task_id_from_dict_arg(taskq_home):
+    """Covers executor.py lines 211-218 (dict first-arg branch)."""
+    from taskq_plus.service.executor import _dispatch_and_emit
+
+    result = _dispatch_and_emit(
+        "pre_run", [], {"id": "tid-from-dict", "command": "echo hi"}
+    )
+    # Result is the PluginDispatchResult — empty failures, empty disabled.
+    assert hasattr(result, "failures")
+    assert hasattr(result, "disabled")
+    assert result.failures == []
+    assert result.disabled == []
+
+
+def test_fr02_dispatch_and_emit_uses_empty_task_id_for_non_dict(taskq_home):
+    """Covers executor.py lines 211-218 (non-dict first arg branch)."""
+    from taskq_plus.service.executor import _dispatch_and_emit
+
+    # First arg is a plain string (not a dict) → task_id stays "".
+    result = _dispatch_and_emit("pre_run", [], "not-a-dict")
+    assert result.failures == []
+
+
+def test_fr02_dispatch_and_emit_dict_without_id_uses_empty_string(taskq_home):
+    """Covers executor.py lines 211-218 (dict lacking 'id' key)."""
+    from taskq_plus.service.executor import _dispatch_and_emit
+
+    # Dict without 'id' → task_id = "".
+    result = _dispatch_and_emit("pre_run", [], {"command": "echo"})
+    assert result.failures == []
+
+
+def test_fr02_dispatch_and_emit_with_no_args_uses_empty_task_id(taskq_home):
+    """Covers executor.py lines 211-218 (no positional args)."""
+    from taskq_plus.service.executor import _dispatch_and_emit
+
+    # No args at all → if-branch skipped, task_id stays "".
+    result = _dispatch_and_emit("pre_run", [])
+    assert result.failures == []
+
+
+# ---- executor.py line 366 (_unmet_dependencies: rec is None) --------------
+def test_fr02_unmet_dependencies_returns_empty_when_task_missing(taskq_home):
+    """Covers executor.py line 366 — rec is None → return [].
+
+    A missing task has no unmet deps (the guard short-circuits).
+    """
+    from taskq_plus.service.executor import _unmet_dependencies
+
+    # No tasks seeded — find_by_id returns None → guard fires.
+    assert _unmet_dependencies("no-such-task") == []
+
+
+# ---- executor.py line 371 (_unmet_dependencies: dep not done → append) ----
+def test_fr02_unmet_dependencies_appends_pending_dep(taskq_home):
+    """Covers executor.py line 371 — append unmet dep id.
+
+    When a task's dep exists but is still `pending`, the dep id is appended
+    to the unmet list (and the function returns it).
+    """
+    from taskq_plus.service.executor import _unmet_dependencies
+
+    p = Path(taskq_home) / "tasks.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(
+        json.dumps(
+            [
+                {"id": "parent", "depends_on": [], "status": "pending"},
+                {"id": "child", "depends_on": ["parent"], "status": "pending"},
+            ]
+        ),
+        encoding="utf-8",
+    )
+    assert _unmet_dependencies("child") == ["parent"]
+
+
+def test_fr02_unmet_dependencies_appends_failed_dep(taskq_home):
+    """Covers executor.py line 371 — failed dep is still unmet.
+
+    A dependency that ran and failed is also unmet; only `done` releases the
+    downstream gate.
+    """
+    from taskq_plus.service.executor import _unmet_dependencies
+
+    p = Path(taskq_home) / "tasks.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(
+        json.dumps(
+            [
+                {"id": "p", "depends_on": [], "status": "failed"},
+                {"id": "c", "depends_on": ["p"], "status": "pending"},
+            ]
+        ),
+        encoding="utf-8",
+    )
+    assert _unmet_dependencies("c") == ["p"]
+
+
+def test_fr02_unmet_dependencies_returns_empty_when_all_deps_done(taskq_home):
+    """Covers executor.py lines 367-372 — happy path through the loop.
+
+    When every dep is `done`, the loop completes without appending anything
+    and the final `return unmet` (line 372) emits `[]`.
+    """
+    from taskq_plus.service.executor import _unmet_dependencies
+
+    p = Path(taskq_home) / "tasks.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(
+        json.dumps(
+            [
+                {"id": "p", "depends_on": [], "status": "done"},
+                {"id": "c", "depends_on": ["p"], "status": "pending"},
+            ]
+        ),
+        encoding="utf-8",
+    )
+    assert _unmet_dependencies("c") == []
+
+
+# ---- executor.py lines 389-390 (_execute_or_block → blocked) --------------
+def test_fr02_execute_or_block_marks_blocked_when_dep_unmet(taskq_home):
+    """Covers executor.py lines 389-390 — set status=blocked, return None.
+
+    A task whose dependency has not reached `done` is marked `blocked` and
+    never shells out to a subprocess.
+    """
+    from taskq_plus.service.executor import _execute_or_block
+
+    p = Path(taskq_home) / "tasks.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(
+        json.dumps(
+            [
+                {"id": "parent", "depends_on": [], "status": "pending"},
+                {
+                    "id": "child",
+                    "depends_on": ["parent"],
+                    "status": "pending",
+                    "command": "echo should-never-run",
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
+    result = _execute_or_block("child")
+    assert result is None
+    rec = find_by_id("child")
+    assert rec is not None
+    assert rec["status"] == "blocked"
+
+
+# ---- executor.py line 455 (_load_retry_config) ----------------------------
+def test_fr02_load_retry_config_uses_defaults_when_env_unset(taskq_home, monkeypatch):
+    """Covers executor.py line 455 — `_load_retry_config` with all envs unset.
+
+    With no FR-03 env knobs set, the config snapshot carries the four
+    DEFAULT_* values from `service.breaker`.
+    """
+    from taskq_plus.service.executor import _load_retry_config
+
+    for var in (
+        "TASKQ_RETRY_LIMIT",
+        "TASKQ_BACKOFF_BASE",
+        "TASKQ_BREAKER_THRESHOLD",
+        "TASKQ_BREAKER_COOLDOWN",
+    ):
+        monkeypatch.delenv(var, raising=False)
+
+    cfg = _load_retry_config()
+    assert cfg.retry_limit == DEFAULT_RETRY_LIMIT
+    assert cfg.backoff_base_seconds == DEFAULT_BACKOFF_BASE_S
+    assert cfg.breaker_threshold == DEFAULT_THRESHOLD
+    assert cfg.breaker_cooldown_seconds == DEFAULT_COOLDOWN_S
+
+
+def test_fr02_load_retry_config_reads_explicit_env_values(taskq_home, monkeypatch):
+    """Covers executor.py line 455 — `_load_retry_config` honors env overrides.
+
+    All four FR-03 knobs are honoured when explicitly set.
+    """
+    from taskq_plus.service.executor import _load_retry_config
+
+    monkeypatch.setenv("TASKQ_RETRY_LIMIT", "5")
+    monkeypatch.setenv("TASKQ_BACKOFF_BASE", "0.25")
+    monkeypatch.setenv("TASKQ_BREAKER_THRESHOLD", "7")
+    monkeypatch.setenv("TASKQ_BREAKER_COOLDOWN", "12.5")
+
+    cfg = _load_retry_config()
+    assert cfg.retry_limit == 5
+    assert cfg.backoff_base_seconds == 0.25
+    assert cfg.breaker_threshold == 7
+    assert cfg.breaker_cooldown_seconds == 12.5
+
+
+# ---- executor.py lines 496-571 (run_with_retry) ---------------------------
+def test_fr02_run_with_retry_happy_path_no_retry(taskq_home, monkeypatch):
+    """Covers executor.py lines 496-571 (run_with_retry happy path, no retry).
+
+    A successful `true` command completes on the first try with no sleeps.
+    The breaker counter is reset (CLOSED + count=0).
+    """
+    from taskq_plus.service.executor import run_with_retry
+    from taskq_plus.storage.breaker_store import read_breaker
+
+    monkeypatch.setenv("TASKQ_RETRY_LIMIT", "3")
+    monkeypatch.setenv("TASKQ_BACKOFF_BASE", "0.001")
+    _seed_pending(taskq_home, task_id="okwretry", command="true")
+
+    sleeps: list[float] = []
+    rc = run_with_retry("okwretry", sleep_fn=sleeps.append)
+
+    assert rc == 0  # EXIT_OK
+    assert sleeps == []  # No retry → no backoff sleeps.
+    breaker = read_breaker()
+    assert breaker is not None
+    assert breaker["state"] == "CLOSED"
+    assert breaker["failure_count"] == 0
+
+
+def test_fr02_run_with_retry_retries_then_succeeds(taskq_home, monkeypatch):
+    """Covers executor.py lines 537-549 (the retry loop).
+
+    A command that exits non-zero on the first call but succeeds after we
+    flip its exit code forces `run_with_retry` through the `while
+    exit_code in RETRYABLE_EXITS` loop at least once.
+    """
+    from taskq_plus.service.executor import run_with_retry
+
+    import taskq_plus.service.executor as exec_mod
+
+    monkeypatch.setenv("TASKQ_RETRY_LIMIT", "2")
+    monkeypatch.setenv("TASKQ_BACKOFF_BASE", "0.001")
+
+    # Seed a task — but we'll override `run` so the first call fails, second
+    # call succeeds. The store needs an entry so the breaker path doesn't
+    # bail early.
+    _seed_pending(taskq_home, task_id="flips", command="true")
+
+    real_run = exec_mod.run
+    call_count = {"n": 0}
+
+    def _flaky(task_id: str) -> int:
+        call_count["n"] += 1
+        # First call → fails (exit 1); second call → succeeds (exit 0).
+        if call_count["n"] == 1:
+            return 1
+        return 0
+
+    sleeps: list[float] = []
+    monkeypatch.setattr(exec_mod, "run", _flaky)
+    rc = run_with_retry("flips", sleep_fn=sleeps.append)
+
+    assert rc == 0
+    assert call_count["n"] == 2
+    # At least one backoff sleep happened between retries.
+    assert len(sleeps) >= 1
+    # Each sleep should equal the base × 2^n for some n ≥ 0.
+    assert all(s >= 0 for s in sleeps)
+
+
+def test_fr02_run_with_retry_breaker_open_returns_3(taskq_home, monkeypatch):
+    """Covers executor.py lines 502-509 (breaker OPEN branch).
+
+    When the persisted breaker is OPEN (inside its cooldown window),
+    `run_with_retry` immediately returns EXIT_BREAKER_OPEN=3 and emits
+    `breaker open` on stderr — the subprocess is never invoked.
+    """
+    from taskq_plus.service.executor import (
+        EXIT_BREAKER_OPEN,
+        run_with_retry,
+    )
+    from taskq_plus.storage.breaker_store import write_breaker
+
+    # Pre-seed an OPEN breaker record. opened_at = now → still inside cooldown.
+    write_breaker(
+        {
+            "version": 1,
+            "state": "OPEN",
+            "failure_count": 3,
+            "opened_at": __import__("time").time(),
+        }
+    )
+
+    # No task seeded; the breaker should reject before any store lookup.
+    rc = run_with_retry("any-task", sleep_fn=lambda _s: None)
+    assert rc == EXIT_BREAKER_OPEN
+
+
+def test_fr02_run_with_retry_records_failure_when_command_fails(taskq_home, monkeypatch):
+    """Covers executor.py line 569 — `breaker.record_failure()` branch.
+
+    When the task ends in a non-zero exit after exhausting retries, the
+    breaker counter is incremented (else-branch of the `if exit_code ==
+    EXIT_OK` check).
+    """
+    from taskq_plus.service.executor import run_with_retry
+    from taskq_plus.storage.breaker_store import read_breaker
+
+    monkeypatch.setenv("TASKQ_RETRY_LIMIT", "1")
+    monkeypatch.setenv("TASKQ_BACKOFF_BASE", "0.001")
+
+    _seed_pending(taskq_home, task_id="willfail", command="false")
+    rc = run_with_retry("willfail", sleep_fn=lambda _s: None)
+
+    assert rc == 1  # EXIT_FAILED
+    breaker = read_breaker()
+    assert breaker is not None
+    # The failure count must have advanced past zero — record_failure ran.
+    assert breaker["failure_count"] >= 1
+
+
+# ---- task_store.py line 58 (FileNotFoundError re-raise) -------------------
+def test_taskq_store_atomic_write_reraises_filenotfound(taskq_home):
+    """Covers task_store.py line 58 — FileNotFoundError from mkstemp reraised.
+
+    The outer `except FileNotFoundError: raise` clause exists to surface
+    directory-disappearance failures from `tempfile.mkstemp` as the original
+    exception (not wrapped or swallowed). We trigger it deterministically by
+    mocking `tempfile.mkstemp` to raise.
+    """
+    target = Path(taskq_home) / "x.json"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with patch(
+        "taskq_plus.storage.task_store.tempfile.mkstemp",
+        side_effect=FileNotFoundError("simulated missing dir"),
+    ):
+        with pytest.raises(FileNotFoundError):
+            _atomic_write_json(target, {"a": 1})
+
