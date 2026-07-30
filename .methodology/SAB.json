@@ -34,7 +34,8 @@
         },
         {
           "name": "taskq_plus.observability.export"
-        }
+        },
+        "taskq_plus.observability"
       ],
       "allowed_dependencies": [
         "service",
