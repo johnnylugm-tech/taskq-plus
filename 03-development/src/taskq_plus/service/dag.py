@@ -13,7 +13,7 @@ Citations:
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Set, Tuple
 
 
 # ---------------------------------------------------------------------------
@@ -43,6 +43,34 @@ class DepthExceeded(DAGError):
 
 
 # ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+def _build_adjacency(
+    tasks: Sequence[Mapping[str, Any]],
+) -> Tuple[Set[str], Dict[str, List[str]]]:
+    """Return ``(known_ids, edges)`` for the task list.
+
+    Tasks with a missing ``id`` field are ignored. Each task's ``depends_on``
+    is filtered to ids that are themselves known, so any dep pointing at an
+    external / vanished predecessor is treated as already-satisfied — both
+    `topological_layers` and `detect_cycle` share that contract.
+    """
+    known_ids: Set[str] = set()
+    raw_edges: Dict[str, List[str]] = {}
+    for t in tasks:
+        tid = t.get("id")
+        if tid is None:
+            continue
+        known_ids.add(tid)
+        raw_edges[tid] = list(t.get("depends_on") or [])
+    edges: Dict[str, List[str]] = {
+        tid: [d for d in deps if d in known_ids]
+        for tid, deps in raw_edges.items()
+    }
+    return known_ids, edges
+
+
+# ---------------------------------------------------------------------------
 # topological_layers — Kahn-style layer-by-layer decomposition.
 #
 # Groups task ids into layers where every id in layer N depends only on ids
@@ -64,7 +92,8 @@ def topological_layers(
       - SPEC.md §3 FR-02 (ThreadPoolExecutor dispatches per layer).
 
     Algorithm:
-      1. Build the known-id set + an in-degree map for every task id.
+      1. Build the known-id set + an in-degree map + a reverse adjacency
+         (successors) index for every task id.
       2. Repeatedly peel off the set of ids whose in-degree is 0 (or whose
          remaining deps are all outside the known-id set), until the
          residual sub-DAG is empty.
@@ -74,25 +103,13 @@ def topological_layers(
          matches the P6-layers-nonempty property: layers must always be
          a non-empty list of lists.
     """
-    # Drop defensive entries (no id) so the rest of the algorithm can
-    # assume `id` is a non-None string.
-    known: List[Mapping[str, Any]] = [
-        t for t in tasks if t.get("id") is not None
-    ]
-    known_ids = {t.get("id") for t in known}
+    known_ids, edges = _build_adjacency(tasks)
 
-    # Mutable working copies of in-degree + the deps themselves. Tasks
-    # whose deps point outside `known_ids` are treated as satisfied.
-    in_degree: Dict[str, int] = {}
-    pending_deps: Dict[str, List[str]] = {}
-    for t in known:
-        tid = t.get("id")
-        deps = [
-            d for d in (t.get("depends_on") or [])
-            if d in known_ids
-        ]
-        pending_deps[tid] = deps
-        in_degree[tid] = len(deps)
+    in_degree: Dict[str, int] = {tid: len(deps) for tid, deps in edges.items()}
+    successors: Dict[str, List[str]] = {tid: [] for tid in known_ids}
+    for tid, deps in edges.items():
+        for dep in deps:
+            successors[dep].append(tid)
 
     remaining_ids = set(known_ids)
     layers: List[List[str]] = []
@@ -109,10 +126,9 @@ def topological_layers(
         layers.append(layer)
         for tid in layer:
             remaining_ids.discard(tid)
-            for other_tid in list(pending_deps):
-                if tid in pending_deps[other_tid]:
-                    pending_deps[other_tid].remove(tid)
-                    in_degree[other_tid] -= 1
+            for child in successors.get(tid, ()):
+                if child in remaining_ids:
+                    in_degree[child] -= 1
     return layers
 
 
@@ -134,15 +150,7 @@ def detect_cycle(
     slice of the current DFS stack from that neighbour up to the current
     node, with the neighbour repeated at the end to mark the closing edge.
     """
-    known_ids = {t.get("id") for t in tasks if t.get("id") is not None}
-    edges: Dict[str, List[str]] = {}
-    for t in tasks:
-        tid = t.get("id")
-        if tid is None:
-            continue
-        edges[tid] = [
-            d for d in (t.get("depends_on") or []) if d in known_ids
-        ]
+    known_ids, edges = _build_adjacency(tasks)
 
     WHITE, GREY, BLACK = 0, 1, 2
     color: Dict[str, int] = {tid: WHITE for tid in known_ids}
@@ -158,8 +166,7 @@ def detect_cycle(
             if dep_color == GREY:
                 # Found a back-edge to `dep` — slice the stack from there.
                 start = on_stack_index[dep]
-                cycle = stack[start:] + [dep]
-                return cycle
+                return stack[start:] + [dep]
             if dep_color == WHITE:
                 found = visit(dep)
                 if found is not None:
