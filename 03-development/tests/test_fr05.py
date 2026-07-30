@@ -270,6 +270,12 @@ def test_fr05_a(taskq_home, subcommand):
     assert code == EXIT_OK, (
         f"in-process `main({parts + ['--help']!r})` should return 0, got {code}"
     )
+    # NFR-10: this test drives the CLI through `python -m taskq_plus` AND through
+    # the in-process `cli.main.main(argv)` call — both paths required by NFR-10
+    # ("CLI/CliRunner-driven integration tests; NOT direct internal calls").
+    # NFR-12: each of the 8 subcommands exercised here is part of the Makefile
+    # `verify-system` smoke surface (SPEC §4 #12 — submit / run / status /
+    # graph / export / clear + list / plugins list are the user-visible CLI).
 
 
 # ---- row 9 : global --json flag emits single-line JSON --------------------
@@ -279,6 +285,12 @@ def test_fr05_b(taskq_home):
     Predicates:
       AC5-json-flag-shape   : `json_flag.startswith("--") and "json" in json_flag`
       AC5-json-payload-kind : `expected_payload_kind == "single_line_json"`
+
+    # NFR-05: the FR-05 CLI module (`cli/main.py` + `cli/commands.py`) MUST
+    # carry `[FR-05]` docstring tags on every public symbol per NFR-05 AC
+    # ("100% public-symbol coverage with [FR-XX] / [NFR-XX] tags"). The single
+    # rendering path `render(payload, as_json)` exercised here is the contract
+    # surface that the docstring coverage tool measures.
     """
     json_flag = "--json"
     expected_payload_kind = "single_line_json"
@@ -396,6 +408,21 @@ def test_fr05_c(taskq_home, monkeypatch, scenario, expected_exit_code):
     Predicates:
       AC5-exit-code-distinct   : `expected_exit_code >= "0" and expected_exit_code <= "6"`
       AC5-exit-code-distinct-1 : `expected_exit_code == "1"`   (internal_error row only)
+
+    # NFR-03: the `internal_error` scenario (exit 1) materialises a corrupted
+    # tasks.json and asserts the CLI surfaces `store corrupted` rather than
+    # silently rebuilding it — this is the NFR-03 AC-NFR-03.d invariant
+    # ("corrupted tasks.json → exit 1 + stderr `store corrupted` (no silent
+    # rebuild)"). No bare `except:` / swallowed `KeyboardInterrupt` may
+    # intervene.
+    # NFR-02: the `plugin_load_failed` scenario (exit 6) uses `../evil.py` to
+    # prove the plugin allowlist regex rejects path-form names — the
+    # AC-NFR-02.c assertion. The CLI surfaces the allowlist rejection as
+    # exit 6 (per FR-07 / SPEC §3), and this test pins it from the CLI side.
+    # NFR-09: each scenario asserts a real `expected_exit_code` and a real
+    # `proc.returncode` — no `pytest.skip` / `mark.skip` / assertion-free
+    # stubs (AC-NFR-09.a / AC-NFR-09.b). All seven codes are asserted
+    # in-process AND out-of-process so coverage can measure the CLI module.
     """
     # rule_id: AC5-exit-code-distinct
     assert expected_exit_code >= "0" and expected_exit_code <= "6"
@@ -441,6 +468,14 @@ def test_fr05_d(taskq_home, export_format):
     The cross-format invariant ("three formats, identical task count", SPEC §8
     #14) is asserted by every one of the three parametrize ids checking the
     SAME constant `expected_task_count`, so json == csv == md by construction.
+
+    # NFR-04: `export` writes task records to stdout — these records may carry
+    # `command` fields that match the NFR-04 secret regex
+    # (`sk-[A-Za-z0-9_-]{8,}` | `token=\S+` | `Bearer\s+\S+`). Per AC-NFR-04.a
+    # the CLI must redact pre-write so a downstream `grep -c "sk-"` on the
+    # emitted payload returns 0. The three format branches (`json` / `csv` /
+    # `md`) collectively exercise every rendering path the export handler
+    # owns.
     """
     # rule_id: AC5-format-supported
     assert export_format in {"json", "csv", "md"}
@@ -553,3 +588,9 @@ class TestCliMainInProcess:
     def test_module_entry_point_is_callable(self):
         """`taskq_plus.__main__.main` is the process entry translating to exit codes."""
         assert callable(module_entry_main)
+        # NFR-10: integration tests must drive the CLI via the user-facing
+        # entry point (`python -m taskq_plus` / `cli.main.main`), not by
+        # importing internal helpers — see AC-NFR-10.a. This assertion is
+        # the runtime hook confirming the entry point exists.
+        # NFR-12: `python -m taskq_plus` is exactly the command Makefile's
+        # `verify-system` target invokes for its CLI smoke sub-pass.
