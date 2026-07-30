@@ -37,6 +37,7 @@ from taskq_plus.service.breaker import (
     Breaker,
     compute_backoff_seconds,
 )
+from taskq_plus.service.dag import topological_layers
 from taskq_plus.storage.breaker_store import read_breaker, write_breaker
 from taskq_plus.storage.task_store import (
     find_by_id,
@@ -165,41 +166,16 @@ def _topological_levels(tasks: List[Dict[str, Any]]) -> List[List[str]]:
     Each level lists task ids whose dependencies are all satisfied by earlier
     levels. Within a level, ids may run concurrently via ThreadPoolExecutor.
 
-    [FR-02]
+    Delegates to `service.dag.topological_layers`, the FR-06-owned Kahn
+    implementation, so the batch scheduler and the `graph` command share one
+    layering algorithm.
+
+    [FR-02] [FR-06]
     Citations:
       - SPEC.md §3 FR-02 (DAG topological order).
-      - SPEC.md §3 FR-06 (DAG ordering primitive).
+      - SPEC.md §3 FR-06 (Kahn topological sort; same-layer tasks concurrent).
     """
-    known_ids = {t.get("id") for t in tasks}
-    remaining: List[Dict[str, Any]] = list(tasks)
-    satisfied: set = set()
-    levels: List[List[str]] = []
-    while remaining:
-        level = cast(
-            List[str],
-            [
-                tid
-                for t in remaining
-                if all(
-                    dep in satisfied or dep not in known_ids
-                    for dep in (t.get("depends_on") or [])
-                )
-                for tid in (t.get("id"),)
-                if tid is not None
-            ],
-        )
-        if not level:
-            # Cycle or unsatisfiable deps — emit remaining as a final level.
-            remaining_ids = cast(
-                List[str],
-                [tid for tid in (t.get("id") for t in remaining) if tid is not None],
-            )
-            levels.append(remaining_ids)
-            break
-        levels.append(level)
-        satisfied.update(level)
-        remaining = [t for t in remaining if t.get("id") not in satisfied]
-    return levels
+    return topological_layers(tasks)
 
 
 def _build_result(
@@ -296,18 +272,64 @@ def run(task_id: str) -> int:
     return EXIT_FAILED
 
 
+def _unmet_dependencies(task_id: str) -> List[str]:
+    """Return the dep ids of `task_id` that have not reached status `done`.
+
+    A dep id with no matching record is treated as satisfied (it was cleared
+    or never existed, so it cannot gate this task). A dep that exists but sits
+    in any non-`done` status — `failed`, `timeout`, `blocked`, still `pending`
+    — is unmet.
+
+    [FR-06]
+    Citations:
+      - SPEC.md §3 FR-06 (dependency result not `done` → downstream task is
+        marked `blocked`, not executed).
+    """
+    rec = find_by_id(task_id)
+    if rec is None:
+        return []
+    unmet: List[str] = []
+    for dep_id in rec.get("depends_on") or []:
+        dep = find_by_id(dep_id)
+        if dep is not None and dep.get("status") != "done":
+            unmet.append(dep_id)
+    return unmet
+
+
+def _execute_or_block(task_id: str) -> Optional[Dict[str, Any]]:
+    """Run `task_id`, or mark it `blocked` when a dependency is not `done`.
+
+    Blocking is transitive without extra bookkeeping: layers are barriers, so
+    a task whose parent was blocked in an earlier layer observes that parent's
+    `blocked` status here and blocks in turn. A blocked task never shells out,
+    so it also never feeds the FR-03 breaker failure count.
+
+    [FR-06]
+    Citations:
+      - SPEC.md §3 FR-06 (dependency result not `done` → downstream `blocked`,
+        not executed, not counted toward breaker failure count).
+    """
+    if _unmet_dependencies(task_id):
+        _set_status(task_id, {"status": "blocked"})
+        return None
+    return execute_task(task_id)
+
+
 def run_all() -> None:
     """Batch entry — execute every pending task via ThreadPoolExecutor.
 
-    Tasks are dispatched in DAG topological layers: a layer's tasks may run
+    Tasks are dispatched in Kahn topological layers: a layer's tasks may run
     concurrently, but a later layer never starts until every dependency in
-    earlier layers is finished. All store writes share the module Lock.
+    earlier layers is finished. A task whose dependency did not reach `done`
+    is marked `blocked` instead of being executed. All store writes share the
+    module Lock.
 
-    [FR-02]
+    [FR-02] [FR-06]
     Citations:
       - SPEC.md §3 FR-02 (ThreadPoolExecutor + DAG topological order).
       - SPEC.md §3 FR-02 (shared Lock over store).
-      - SPEC.md §3 FR-06 (DAG ordering).
+      - SPEC.md §3 FR-06 (Kahn topological sort; same-layer concurrency;
+        dependency not `done` → downstream `blocked`).
     """
     tasks = load_tasks()
     pending = [t for t in tasks if t.get("status") == "pending"]
@@ -317,7 +339,7 @@ def run_all() -> None:
     max_workers = _resolve_max_workers()
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
         for level_ids in levels:
-            futures = [pool.submit(execute_task, tid) for tid in level_ids]
+            futures = [pool.submit(_execute_or_block, tid) for tid in level_ids]
             for fut in futures:
                 fut.result()
 

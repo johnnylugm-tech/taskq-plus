@@ -27,6 +27,7 @@ from typing import Optional, Sequence
 from pydantic import ValidationError
 
 from taskq_plus.models.task import TaskSubmission, generate_task_id
+from taskq_plus.service import dag
 from taskq_plus.service.executor import run_all as exec_run_all
 from taskq_plus.storage.task_store import (
     _now_iso,
@@ -127,28 +128,12 @@ def _compute_depth(depends_on: Sequence[str]) -> int:
     parent is treated as depth 0 (so submit never blocks on a vanished
     predecessor). Pure traversal over the persisted task store; safe to call
     inside submit because each new task is appended only after this check.
+
+    Depth is edge-count based, i.e. one less than the node-count chain length
+    that `service.dag.chain_length` reports (SPEC §7 reports node counts).
     """
-    if not depends_on:
-        return 0
     by_id = {t.get("id"): t for t in load_tasks() if t.get("id") is not None}
-    memo: dict[str, int] = {}
-
-    def depth(tid: str) -> int:
-        cached = memo.get(tid)
-        if cached is not None:
-            return cached
-        rec = by_id.get(tid)
-        if rec is None:
-            memo[tid] = 0
-            return 0
-        parents = rec.get("depends_on") or []
-        if not parents:
-            memo[tid] = 0
-            return 0
-        memo[tid] = 1 + max(depth(p) for p in parents)
-        return memo[tid]
-
-    return 1 + max(depth(p) for p in depends_on)
+    return dag.chain_length(depends_on, by_id=by_id) - 1
 
 
 def _strict_load_tasks() -> list:
@@ -201,10 +186,13 @@ def submit_cmd(
 ) -> dict:
     """Submit a new task; return a plain dict, never print.
 
-    [FR-01] [FR-05]
+    [FR-01] [FR-05] [FR-06]
     Citations:
       - SPEC.md §3 FR-01 (TaskSubmission validation, id generation, audit).
       - SPEC.md §3 FR-05 (submit wired through click; depth error → exit 5).
+      - SPEC.md §3 FR-06 (`--after` repeatable; cycle → exit 5 + cycle path;
+        chain depth > `TASKQ_MAX_DAG_DEPTH` → exit 5).
+      - SPEC.md §7 (exit-code map: graph error → 5).
     """
     deps: list[str] = list(after) if after else []
 
@@ -229,12 +217,29 @@ def submit_cmd(
                 f"dependency task id {dep_id!r} does not exist"
             )
 
-    depth = _compute_depth(submission.depends_on)
-    max_depth = _resolve_max_dag_depth()
-    if depth >= max_depth:
+    by_id = {t.get("id"): t for t in load_tasks() if t.get("id") is not None}
+
+    # FR-06 cycle rejection — validate that the *whole* store remains acyclic
+    # after this submission is accepted. A new task with a fresh id cannot
+    # itself close a loop, but the store may already be cyclic (e.g. corrupted
+    # tasks.json or an earlier buggy submit), and any further submit into a
+    # cyclic store must be rejected (SPEC §8 #11 / AC-FR-06.b).
+    full_graph = list(by_id.values())
+    cycle = dag.detect_cycle(full_graph)
+    if cycle is not None:
         raise GraphError(
-            f"dependency depth {depth} exceeds TASKQ_MAX_DAG_DEPTH={max_depth}"
+            f"dependency cycle detected: {dag.cycle_path_string(cycle)}"
         )
+
+    # FR-06 depth cap — SPEC §7 stderr `dependency chain too deep: <n> > <max>`.
+    try:
+        dag.check_depth(
+            submission.depends_on,
+            by_id=by_id,
+            max_depth=_resolve_max_dag_depth(),
+        )
+    except dag.DepthExceeded as exc:
+        raise GraphError(str(exc)) from exc
 
     task_id = generate_task_id()
     task = {
