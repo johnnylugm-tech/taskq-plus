@@ -100,6 +100,8 @@ if str(SRC) not in sys.path:
 # ---------------------------------------------------------------------------
 from taskq_plus.service.dag import (  # noqa: E402,F401
     MAX_DAG_DEPTH,
+    ancestor_tasks,
+    chain_length,
     check_depth,
     cycle_path_string,
     detect_cycle,
@@ -813,6 +815,101 @@ class TestDagInProcess:
     def test_max_dag_depth_default_is_32(self):
         """MAX_DAG_DEPTH default is 32 (SPEC §7 / SAD.md §2)."""
         assert MAX_DAG_DEPTH == 32
+
+    def test_ancestor_tasks_collects_linear_chain(self):
+        """ancestor_tasks collects every record reachable upward."""
+        tasks = [
+            {"id": "root", "depends_on": []},
+            {"id": "mid", "depends_on": ["root"]},
+            {"id": "leaf", "depends_on": ["mid"]},
+        ]
+        by_id = {t["id"]: t for t in tasks}
+        ancestors = ancestor_tasks(["leaf"], by_id=by_id)
+        # seed `leaf` is also collected — its record is in `by_id` so the
+        # walk visits it first.
+        assert sorted(t["id"] for t in ancestors) == ["leaf", "mid", "root"]
+
+    def test_ancestor_tasks_collects_branching_dag(self):
+        """ancestor_tasks walks every branch — diamond shape."""
+        tasks = [
+            {"id": "root", "depends_on": []},
+            {"id": "a", "depends_on": ["root"]},
+            {"id": "b", "depends_on": ["root"]},
+            {"id": "leaf", "depends_on": ["a", "b"]},
+        ]
+        by_id = {t["id"]: t for t in tasks}
+        ancestors = ancestor_tasks(["leaf"], by_id=by_id)
+        assert sorted(t["id"] for t in ancestors) == ["a", "b", "leaf", "root"]
+
+    def test_ancestor_tasks_skips_unknown_ids(self):
+        """A dep id absent from by_id contributes no record."""
+        tasks = [
+            {"id": "real", "depends_on": []},
+            {"id": "child", "depends_on": ["real", "ghost"]},
+        ]
+        by_id = {t["id"]: t for t in tasks}
+        ancestors = ancestor_tasks(["child"], by_id=by_id)
+        ids = [t["id"] for t in ancestors]
+        assert "real" in ids
+        assert "ghost" not in ids
+
+    def test_ancestor_tasks_terminates_on_cycle(self):
+        """ancestor_tasks terminates (visited-set guards against loops)."""
+        tasks = [
+            {"id": "a", "depends_on": ["b"]},
+            {"id": "b", "depends_on": ["a"]},
+        ]
+        by_id = {t["id"]: t for t in tasks}
+        ancestors = ancestor_tasks(["a"], by_id=by_id)
+        assert sorted(t["id"] for t in ancestors) == ["a", "b"]
+
+    def test_ancestor_tasks_empty_input_returns_empty(self):
+        """ancestor_tasks([], by_id=...) returns [] — no ancestors."""
+        assert ancestor_tasks([], by_id={}) == []
+
+    def test_ancestor_tasks_multiple_depends_on_seeds(self):
+        """ancestor_tasks walks every id in the seed list."""
+        tasks = [
+            {"id": "x", "depends_on": []},
+            {"id": "y", "depends_on": []},
+        ]
+        by_id = {t["id"]: t for t in tasks}
+        ancestors = ancestor_tasks(["x", "y"], by_id=by_id)
+        assert sorted(t["id"] for t in ancestors) == ["x", "y"]
+
+    def test_chain_length_memoizes_shared_parent(self):
+        """chain_length memoizes — second visit to a shared parent hits cache.
+
+        Exercises the `cached = memo.get(tid); return cached` path in
+        `chain_length.length_of` (dag.py line ~270). A diamond DAG where two
+        siblings share a grandparent guarantees the second sibling's
+        recursive call hits the memo.
+        """
+        tasks = [
+            {"id": "root", "depends_on": []},
+            {"id": "a", "depends_on": ["root"]},
+            {"id": "b", "depends_on": ["root"]},
+            {"id": "leaf", "depends_on": ["a", "b"]},
+        ]
+        by_id = {t["id"]: t for t in tasks}
+        depth = chain_length(["leaf"], by_id=by_id)
+        # leaf(3) + self(1) → 4 nodes along root → a → leaf
+        assert depth == 4
+
+    def test_chain_length_single_node_returns_two(self):
+        """chain_length with a single known parent counts the parent chain
+        plus one (the new task itself)."""
+        tasks = [{"id": "only", "depends_on": []}]
+        by_id = {"only": tasks[0]}
+        # depends_on a single known id — that id's chain length is 1 (itself)
+        # plus the new task is 1 more, so total is 2.
+        depth = chain_length(["only"], by_id=by_id)
+        assert depth == 2
+
+    def test_chain_length_empty_depends_on_returns_one(self):
+        """chain_length with no deps returns 1 (the task itself)."""
+        depth = chain_length([], by_id={})
+        assert depth == 1
 
 
 # ===========================================================================
