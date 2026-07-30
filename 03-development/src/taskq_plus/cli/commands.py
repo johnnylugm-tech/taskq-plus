@@ -1,7 +1,9 @@
 """CLI command implementations.
 
-[FR-01]
-Citations: SPEC.md §3 FR-01 (submit command, validation, audit emit).
+[FR-01] [FR-02]
+Citations:
+  - SPEC.md §3 FR-01 (submit command, validation, audit emit).
+  - SPEC.md §3 FR-02 (run / run --all dispatch).
 """
 
 from __future__ import annotations
@@ -15,6 +17,8 @@ from typing import Optional, Sequence
 from pydantic import ValidationError
 
 from taskq_plus.models.task import TaskSubmission, generate_task_id
+from taskq_plus.service.executor import run as exec_run
+from taskq_plus.service.executor import run_all as exec_run_all
 from taskq_plus.storage.task_store import (
     _now_iso,
     append_task,
@@ -47,6 +51,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="taskq_plus", description="taskq-plus CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("submit", help="Submit a new task.")
+    subparsers.add_parser("run", help="Execute pending tasks.")
     return parser
 
 
@@ -66,6 +71,45 @@ def _build_submit_parser() -> argparse.ArgumentParser:
         "--json", action="store_true", dest="as_json", help="Emit JSON output."
     )
     return parser
+
+
+def _build_run_parser() -> argparse.ArgumentParser:
+    """Build the `run` subcommand parser.
+
+    [FR-02]
+    Citations: SPEC.md §3 FR-02 (run <id> | run --all).
+    """
+    parser = argparse.ArgumentParser(prog="taskq_plus run")
+    parser.add_argument(
+        "task_id", nargs="?", default=None, help="Task id to execute."
+    )
+    parser.add_argument(
+        "--all", action="store_true", dest="run_all", help="Execute every pending task."
+    )
+    return parser
+
+
+def _run(argv: Sequence[str]) -> int:
+    """Execute the `run` subcommand.
+
+    [FR-02]
+    Citations:
+      - SPEC.md §3 FR-02 (single-task run, batch --all via ThreadPoolExecutor).
+      - SPEC.md §3 FR-02 (timeout → exit 4; exit 0 → exit 0; non-zero → exit 1).
+    """
+    parser = _build_run_parser()
+    args = parser.parse_args(list(argv))
+
+    if args.run_all:
+        exec_run_all()
+        return EXIT_OK
+    if not args.task_id:
+        print(
+            "error: task_id required (or pass --all to execute every pending task)",
+            file=sys.stderr,
+        )
+        return EXIT_VALIDATION_ERROR
+    return exec_run(args.task_id)
 
 
 def _submit(
@@ -136,8 +180,8 @@ def _submit(
 def dispatch(argv: Sequence[str], taskq_home: Optional[Path] = None) -> int:
     """Dispatch argv to the correct subcommand.
 
-    [FR-01]
-    Citations: SPEC.md §3 FR-01.
+    [FR-01] [FR-02]
+    Citations: SPEC.md §3 FR-01, §3 FR-02.
     """
     if not argv:
         _build_parser().print_help()
@@ -145,6 +189,8 @@ def dispatch(argv: Sequence[str], taskq_home: Optional[Path] = None) -> int:
     sub = argv[0]
     if sub == "submit":
         return _submit(argv[1:], taskq_home=taskq_home)
+    if sub == "run":
+        return _run(argv[1:])
     print(f"error: unknown command {sub!r}", file=sys.stderr)
     return EXIT_VALIDATION_ERROR
 
@@ -152,8 +198,8 @@ def dispatch(argv: Sequence[str], taskq_home: Optional[Path] = None) -> int:
 def main(argv: Optional[Sequence[str]] = None) -> int:
     """Programmatic entry point used by `__main__`.
 
-    [FR-01] [NFR-05]
-    Citations: SPEC.md §3 FR-01.
+    [FR-01] [FR-02] [NFR-05]
+    Citations: SPEC.md §3 FR-01, §3 FR-02.
     """
     if argv is None:
         argv = sys.argv[1:]
