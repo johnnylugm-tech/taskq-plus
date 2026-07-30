@@ -22,6 +22,7 @@ from typing import Any, Callable, Dict, Optional
 
 from taskq_plus.service.executor import run_with_retry as exec_run_with_retry
 from taskq_plus.storage.cache_store import (
+    CACHE_FILENAME,
     cache_path,
     read_cache,
     write_cache,
@@ -32,17 +33,19 @@ from taskq_plus.storage.task_store import find_by_id
 # ---------------------------------------------------------------------------
 # Public constants
 # ---------------------------------------------------------------------------
-CACHE_FILENAME = "cache.json"
-
-# Default TTL (seconds) when TASKQ_CACHE_TTL is unset / unparseable.
+# CACHE_FILENAME is owned by cache_store (the on-disk contract) and re-exported
+# here so callers can import the canonical filename from a single module.
+# DEFAULT_CACHE_TTL_S is service-layer policy: the fallback TTL when the
+# caller passes no override and TASKQ_CACHE_TTL is unset / unparseable.
 DEFAULT_CACHE_TTL_S = 86400
 
 UTC = dt.timezone.utc
 
-# Internal lock — read-modify-write inside write_cache_entry. The on-disk
-# atomic write (tmp + os.replace in cache_store) keeps the file valid; this
-# lock is the merging safety net so concurrent upserts do not clobber each
-# other's entries (test_fr04_d).
+# Module-level Lock serialises read-modify-write inside write_cache_entry so
+# concurrent writers cannot lose each other's entries. The on-disk atomic
+# write (tmp + os.replace in cache_store) keeps the document valid regardless;
+# this Lock is the merging safety net for callers that must upsert under
+# contention (test_fr04_d).
 _cache_lock = threading.Lock()
 
 
@@ -51,36 +54,37 @@ _cache_lock = threading.Lock()
 # ---------------------------------------------------------------------------
 def _now_iso(now_fn: Optional[Callable[[], float]] = None) -> str:
     """Return UTC ISO-8601 timestamp at second precision (trailing 'Z')."""
-    fn = now_fn if now_fn is not None else time.time
-    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(float(fn())))
+    clock = now_fn if now_fn is not None else time.time
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(float(clock())))
 
 
-def _parse_iso(s: Any) -> Optional[float]:
+def _parse_iso(value: Any) -> Optional[float]:
     """Parse an ISO-8601 'Z' timestamp into epoch seconds. None on failure."""
-    if not isinstance(s, str) or not s:
+    if not isinstance(value, str) or not value:
         return None
-    raw = s
-    if raw.endswith("Z"):
-        raw = raw[:-1] + "+00:00"
+    raw = value[:-1] + "+00:00" if value.endswith("Z") else value
     try:
         return dt.datetime.fromisoformat(raw).timestamp()
     except (ValueError, TypeError):
         return None
 
 
+def _coerce_int(value: Any) -> Optional[int]:
+    """Parse `value` as int, returning None on Type/ValueError."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def _resolve_ttl(ttl_seconds: Optional[int]) -> int:
     """Pick the effective TTL: explicit arg > TASKQ_CACHE_TTL > default."""
-    if ttl_seconds is not None:
-        try:
-            return int(ttl_seconds)
-        except (TypeError, ValueError):
-            pass
-    raw = os.environ.get("TASKQ_CACHE_TTL")
-    if raw:
-        try:
-            return int(raw)
-        except ValueError:
-            pass
+    explicit = _coerce_int(ttl_seconds)
+    if explicit is not None:
+        return explicit
+    env_value = _coerce_int(os.environ.get("TASKQ_CACHE_TTL"))
+    if env_value is not None:
+        return env_value
     return DEFAULT_CACHE_TTL_S
 
 
@@ -93,6 +97,23 @@ def _extract_result(task: Dict[str, Any]) -> Dict[str, Any]:
         "stderr_tail": task.get("stderr_tail", "") or "",
         "duration_ms": task.get("duration_ms", 0) or 0,
     }
+
+
+def _ensure_entries_blob(store: Any) -> Dict[str, Any]:
+    """Coerce a `read_cache()` result into a valid `{version, entries}` dict.
+
+    Returns a fresh dict if `store` is missing or non-dict. Mutates and
+    returns `store` in place when it is a dict whose `entries` sub-dict is
+    missing or wrong type — this preserves unrelated keys already on disk.
+    """
+    if not isinstance(store, dict):
+        return {"version": 1, "entries": {}}
+    store.setdefault("version", 1)
+    entries = store.get("entries")
+    if not isinstance(entries, dict):
+        entries = {}
+        store["entries"] = entries
+    return store
 
 
 # ---------------------------------------------------------------------------
@@ -143,18 +164,14 @@ def lookup_cached_result(
     store = read_cache()
     if not store:
         return None
-    entries = store.get("entries") or {}
-    sig = cache_signature(command)
-    entry = entries.get(sig)
+    entry = (store.get("entries") or {}).get(cache_signature(command))
     if not isinstance(entry, dict):
         return None
-    parsed = _parse_iso(entry.get("cached_at"))
-    if parsed is None:
+    cached_at = _parse_iso(entry.get("cached_at"))
+    if cached_at is None:
         return None
-    ttl = _resolve_ttl(ttl_seconds)
     clock = now_fn if now_fn is not None else time.time
-    age = float(clock()) - parsed
-    if age > ttl:
+    if float(clock()) - cached_at > _resolve_ttl(ttl_seconds):
         return None
     return entry
 
@@ -177,17 +194,9 @@ def write_cache_entry(
       - SPEC.md §8 NFR-03 (atomic + thread-safe cache write).
     """
     entry = build_cache_entry(command, result, now_fn=now_fn)
-    sig = entry["signature"]
     with _cache_lock:
-        current = read_cache()
-        if not isinstance(current, dict):
-            current = {"version": 1, "entries": {}}
-        current.setdefault("version", 1)
-        entries = current.get("entries")
-        if not isinstance(entries, dict):
-            entries = {}
-            current["entries"] = entries
-        entries[sig] = entry
+        current = _ensure_entries_blob(read_cache())
+        current["entries"][entry["signature"]] = entry
         write_cache(current)
 
 
@@ -208,14 +217,16 @@ def execute_with_cache(
     (`run_fn` if injected, otherwise `run_with_retry`); on `done` persist
     the fresh result into cache.json.
 
+    `sleep_fn` and `run_fn` are injectable so tests can substitute the
+    executor; `sleep_fn` is accepted for API parity with other FR modules
+    but the cache service does not itself sleep.
+
     [FR-04]
     Citations:
       - SPEC.md §3 FR-04 (within TTL → replay, no subprocess, `cached: true`).
       - SPEC.md §3 FR-04 (miss/expired → normal execution; on `done` → write
         to $TASKQ_HOME/cache.json).
     """
-    _ = sleep_fn  # accepted for API parity; tests inject run_fn instead.
-
     rec = find_by_id(task_id)
     if rec is None:
         return None
