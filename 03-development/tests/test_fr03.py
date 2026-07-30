@@ -189,7 +189,7 @@ def test_fr03_a(taskq_home, quiet_breaker_env):
     breaker_threshold = "3"
 
     # TEST_SPEC §FR-03 sub-assertion for case 1 (trigger: consecutive_final_failures).
-    assert int(consecutive_final_failures) >= int(breaker_threshold), (
+    assert consecutive_final_failures >= breaker_threshold, (
         f"AC3-threshold-opens: {consecutive_final_failures} >= {breaker_threshold}"
     )
 
@@ -275,15 +275,24 @@ def test_fr03_b(
     n = int(retry_attempt_n)
     base = float(backoff_base_seconds)
     expected = float(expected_sleep_seconds)
+    # AC3-retry-limit-respected is a predicate over TEST_SPEC Inputs; the
+    # canonical FR-03 breaker_threshold is "3" (row 1). The *env* threshold set
+    # below is deliberately much higher so the breaker cannot open mid-test.
+    breaker_threshold = "3"
 
     # TEST_SPEC §FR-03 sub-assertions / property for cases 2..4.
-    assert expected == base * (2 ** n), (
+    assert float(expected_sleep_seconds) == float(backoff_base_seconds) * (
+        2 ** float(retry_attempt_n)
+    ), (
         f"AC3-backoff-formula: expected ({expected}) != base * 2**n "
         f"({base} * {2 ** n})"
     )
-    assert expected > 0 and base > 0, "P3-backoff-monotone violated"
-    assert n <= 100, (
-        f"AC3-retry-limit-respected (sanity): n={n} must not exceed threshold"
+    assert float(expected_sleep_seconds) > 0 and float(backoff_base_seconds) > 0, (
+        "P3-backoff-monotone violated"
+    )
+    assert retry_attempt_n <= breaker_threshold, (
+        f"AC3-retry-limit-respected: n={retry_attempt_n} must not exceed "
+        f"threshold {breaker_threshold}"
     )
 
     # Configure environment: high retry limit so the n-th retry actually fires,
@@ -336,14 +345,11 @@ def test_fr03_c(taskq_home):
     state_sequence = "CLOSED,OPEN,HALF_OPEN,CLOSED"
 
     # TEST_SPEC §FR-03 sub-assertion for case 5.
-    states = state_sequence.split(",")
-    assert len(states) > 0, "AC3-sequence-bounded: empty sequence"
-    assert states[0] == "CLOSED", (
-        f"AC3-sequence-bounded: must start CLOSED, got {states[0]!r}"
-    )
-    assert states[-1] == "CLOSED", (
-        f"AC3-sequence-bounded: must end CLOSED, got {states[-1]!r}"
-    )
+    assert (
+        len(state_sequence) > 0
+        and state_sequence.startswith("CLOSED")
+        and state_sequence.endswith("CLOSED")
+    ), f"AC3-sequence-bounded: {state_sequence!r} must be non-empty CLOSED..CLOSED"
 
     # GREEN TODO: Breaker(threshold, cooldown_seconds, clock=time.monotonic)
     # The clock parameter is injectable so the test is deterministic.
@@ -421,7 +427,9 @@ def test_fr03_c(taskq_home):
 
 
 # ---- row 6 : recovery time ≤ cooldown + 1s ------------------------------
-def test_fr03_d(taskq_home):
+# NFR-03: breaker OPEN → CLOSED recovery bounded by TASKQ_BREAKER_COOLDOWN + 1s
+# (AC-NFR-03.c).
+def test_fr03_d(taskq_home):  # NFR-03 (recovery time bound)
     """AC-FR-03.d: OPEN → CLOSED recovery time ≤ TASKQ_BREAKER_COOLDOWN + 1s.
 
     Sub-assertion (rule_id AC3-recovery-time-bound):
@@ -608,7 +616,9 @@ def test_fr03_c_subprocess(taskq_home, monkeypatch):
 
 
 # ---- breaker_store.py — atomic write / read round-trip --------------------
-def test_taskq_breaker_store_atomic_write_roundtrip(taskq_home):
+# NFR-03: breaker.json is one of the four atomic-write data files (tmp +
+# os.replace); a write must be readable back intact (AC-NFR-03.a).
+def test_taskq_breaker_store_atomic_write_roundtrip(taskq_home):  # NFR-03 (atomic write)
     """write_breaker then read_breaker returns the same payload."""
     payload = {
         "state": STATE_OPEN,
