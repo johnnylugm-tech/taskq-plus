@@ -24,6 +24,7 @@ import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, TypeVar, cast
 
 from taskq_plus.service.breaker import (
@@ -322,61 +323,46 @@ def run_all() -> None:
 # ---------------------------------------------------------------------------
 # FR-03 — retry with exponential backoff + global circuit breaker.
 # ---------------------------------------------------------------------------
-def _resolve_retry_limit() -> int:
-    """Return the retry ceiling from TASKQ_RETRY_LIMIT env.
-
-    [FR-03]
-    Citations: SPEC.md#L108 (上限 `TASKQ_RETRY_LIMIT` 次),
-    SPEC.md#L297 (預設 `2`).
-    """
-    return _read_env("TASKQ_RETRY_LIMIT", int, DEFAULT_RETRY_LIMIT)
-
-
-def _resolve_backoff_base() -> float:
-    """Return the backoff base (seconds) from TASKQ_BACKOFF_BASE env.
-
-    [FR-03]
-    Citations: SPEC.md#L108 (`TASKQ_BACKOFF_BASE × 2^n`),
-    SPEC.md#L298 (預設 `0.1`).
-    """
-    return _read_env("TASKQ_BACKOFF_BASE", float, DEFAULT_BACKOFF_BASE_S)
-
-
-def _resolve_breaker_threshold() -> int:
-    """Return the breaker trip threshold from TASKQ_BREAKER_THRESHOLD env.
-
-    [FR-03]
-    Citations: SPEC.md#L112 (計數 ≥ `TASKQ_BREAKER_THRESHOLD` → `OPEN`),
-    SPEC.md#L299 (預設 `3`).
-    """
-    return _read_env("TASKQ_BREAKER_THRESHOLD", int, DEFAULT_THRESHOLD)
-
-
-def _resolve_breaker_cooldown() -> float:
-    """Return the OPEN → HALF_OPEN cooldown from TASKQ_BREAKER_COOLDOWN env.
-
-    [FR-03]
-    Citations: SPEC.md#L114 (經 `TASKQ_BREAKER_COOLDOWN` 秒後 `HALF_OPEN`),
-    SPEC.md#L300 (預設 `5.0`).
-    """
-    return _read_env("TASKQ_BREAKER_COOLDOWN", float, DEFAULT_COOLDOWN_S)
-
-
-def _load_breaker() -> Breaker:
-    """Rebuild the global breaker from `$TASKQ_HOME/breaker.json`.
-
-    Reading on every entry (and writing back on exit) is what makes the counter
-    global across tasks AND across processes.
+@dataclass(frozen=True)
+class RetryConfig:
+    """Bundle of the four FR-03 env knobs for one `run_with_retry` invocation.
 
     [FR-03]
     Citations:
-      - SPEC.md#L110 (斷路器為全域,跨任務、跨進程).
-      - SPEC.md#L115 (狀態持久化於 `$TASKQ_HOME/breaker.json`).
+      - SPEC.md#L108 (上限 `TASKQ_RETRY_LIMIT`；`TASKQ_BACKOFF_BASE × 2^n`).
+      - SPEC.md#L112 (`TASKQ_BREAKER_THRESHOLD` → `OPEN`).
+      - SPEC.md#L114 (`TASKQ_BREAKER_COOLDOWN` → `HALF_OPEN`).
+      - SPEC.md#L297-L300 (env knob defaults).
     """
-    return Breaker.from_record(
-        read_breaker(),
-        threshold=_resolve_breaker_threshold(),
-        cooldown_seconds=_resolve_breaker_cooldown(),
+
+    retry_limit: int
+    backoff_base_seconds: float
+    breaker_threshold: int
+    breaker_cooldown_seconds: float
+
+
+def _load_retry_config() -> RetryConfig:
+    """Read the four FR-03 env knobs into a single `RetryConfig` snapshot.
+
+    [FR-03]
+    Citations:
+      - SPEC.md#L108 (上限 `TASKQ_RETRY_LIMIT`；`TASKQ_BACKOFF_BASE × 2^n`).
+      - SPEC.md#L297 (`TASKQ_RETRY_LIMIT` 預設 `2`).
+      - SPEC.md#L298 (`TASKQ_BACKOFF_BASE` 預設 `0.1`).
+      - SPEC.md#L299 (`TASKQ_BREAKER_THRESHOLD` 預設 `3`).
+      - SPEC.md#L300 (`TASKQ_BREAKER_COOLDOWN` 預設 `5.0`).
+    """
+    return RetryConfig(
+        retry_limit=_read_env("TASKQ_RETRY_LIMIT", int, DEFAULT_RETRY_LIMIT),
+        backoff_base_seconds=_read_env(
+            "TASKQ_BACKOFF_BASE", float, DEFAULT_BACKOFF_BASE_S
+        ),
+        breaker_threshold=_read_env(
+            "TASKQ_BREAKER_THRESHOLD", int, DEFAULT_THRESHOLD
+        ),
+        breaker_cooldown_seconds=_read_env(
+            "TASKQ_BREAKER_COOLDOWN", float, DEFAULT_COOLDOWN_S
+        ),
     )
 
 
@@ -405,7 +391,12 @@ def run_with_retry(
         失敗 → 重新 `OPEN`).
       - SPEC.md#L140 (exit code `3` breaker open).
     """
-    breaker = _load_breaker()
+    config = _load_retry_config()
+    breaker = Breaker.from_record(
+        read_breaker(),
+        threshold=config.breaker_threshold,
+        cooldown_seconds=config.breaker_cooldown_seconds,
+    )
     if not breaker.allow_request():
         print(BREAKER_OPEN_MESSAGE, file=sys.stderr)
         return EXIT_BREAKER_OPEN
@@ -415,13 +406,11 @@ def run_with_retry(
     write_breaker(breaker.to_record())
 
     sleep = sleep_fn if sleep_fn is not None else time.sleep
-    retry_limit = _resolve_retry_limit()
-    backoff_base = _resolve_backoff_base()
 
     exit_code = run(task_id)
     attempt = 0
-    while exit_code in RETRYABLE_EXITS and attempt < retry_limit:
-        sleep(compute_backoff_seconds(attempt, backoff_base))
+    while exit_code in RETRYABLE_EXITS and attempt < config.retry_limit:
+        sleep(compute_backoff_seconds(attempt, config.backoff_base_seconds))
         exit_code = run(task_id)
         attempt += 1
 
