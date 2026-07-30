@@ -21,7 +21,7 @@ import subprocess
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Callable, Dict, List, Optional, TypeVar
+from typing import Any, Callable, Dict, List, Optional, TypeVar, cast
 
 from taskq_plus.storage.task_store import (
     find_by_id,
@@ -153,17 +153,26 @@ def _topological_levels(tasks: List[Dict[str, Any]]) -> List[List[str]]:
     satisfied: set = set()
     levels: List[List[str]] = []
     while remaining:
-        level = [
-            t.get("id")
-            for t in remaining
-            if all(
-                dep in satisfied or dep not in known_ids
-                for dep in (t.get("depends_on") or [])
-            )
-        ]
+        level = cast(
+            List[str],
+            [
+                tid
+                for t in remaining
+                if all(
+                    dep in satisfied or dep not in known_ids
+                    for dep in (t.get("depends_on") or [])
+                )
+                for tid in (t.get("id"),)
+                if tid is not None
+            ],
+        )
         if not level:
             # Cycle or unsatisfiable deps — emit remaining as a final level.
-            levels.append([t.get("id") for t in remaining])
+            remaining_ids = cast(
+                List[str],
+                [tid for tid in (t.get("id") for t in remaining) if tid is not None],
+            )
+            levels.append(remaining_ids)
             break
         levels.append(level)
         satisfied.update(level)
