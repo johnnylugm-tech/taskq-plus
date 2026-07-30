@@ -51,12 +51,23 @@ def write_breaker(record: Dict[str, Any]) -> None:
     """
     path = breaker_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(
-        prefix=path.name + ".", suffix=".tmp", dir=str(path.parent)
-    )
-    with os.fdopen(fd, "w", encoding="utf-8") as fh:
-        json.dump(record, fh, ensure_ascii=False)
-    os.replace(tmp_name, path)
+    try:
+        fd, tmp_name = tempfile.mkstemp(
+            prefix=path.name + ".", suffix=".tmp", dir=str(path.parent)
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                json.dump(record, fh, ensure_ascii=False)
+            os.replace(tmp_name, path)
+        except BaseException:
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
+            raise
+    except FileNotFoundError:
+        # Parent dir did not exist after mkdir(parents=True).
+        raise
 
 
 def read_breaker() -> Optional[Dict[str, Any]]:

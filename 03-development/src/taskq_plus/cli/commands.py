@@ -432,7 +432,8 @@ def plugins_cmd(subcommand: str = "list") -> dict:
             describe as _describe_plugins,
             load_plugins as _load_plugins,
         )
-    except ImportError as exc:  # pragma: no cover — module is part of SAB.
+    except ImportError as exc:
+        # Module is part of SAB; if it is missing, the install is broken.
         raise PluginLoadError(f"plugin service unavailable: {exc}") from exc
 
     # Parse the allowlist FIRST so the regex validator can reject path-form /

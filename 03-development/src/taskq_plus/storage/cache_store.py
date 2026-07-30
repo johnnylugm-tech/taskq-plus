@@ -61,19 +61,22 @@ def write_cache(record: Dict[str, Any]) -> None:
     """
     path = cache_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(
-        prefix=path.name + ".", suffix=".tmp", dir=str(path.parent)
-    )
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump(record, fh, ensure_ascii=False)
-        os.replace(tmp_name, path)
-    except Exception:
-        # Best-effort cleanup of the temp file on failure.
+        fd, tmp_name = tempfile.mkstemp(
+            prefix=path.name + ".", suffix=".tmp", dir=str(path.parent)
+        )
         try:
-            os.unlink(tmp_name)
-        except OSError:
-            pass
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                json.dump(record, fh, ensure_ascii=False)
+            os.replace(tmp_name, path)
+        except BaseException:
+            # Best-effort cleanup of the temp file on failure.
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
+            raise
+    except FileNotFoundError:
         raise
 
 

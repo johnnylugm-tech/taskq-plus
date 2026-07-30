@@ -39,19 +39,22 @@ def _now_iso() -> str:
 def _atomic_write_json(path: Path, payload: Any) -> None:
     """Write JSON atomically: write to temp file in same dir, then os.replace."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(
-        prefix=path.name + ".", suffix=".tmp", dir=str(path.parent)
-    )
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump(payload, fh, ensure_ascii=False)
-        os.replace(tmp_name, path)
-    except Exception:
-        # Best-effort cleanup of the temp file on failure.
+        fd, tmp_name = tempfile.mkstemp(
+            prefix=path.name + ".", suffix=".tmp", dir=str(path.parent)
+        )
         try:
-            os.unlink(tmp_name)
-        except OSError:
-            pass
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                json.dump(payload, fh, ensure_ascii=False)
+            os.replace(tmp_name, path)
+        except BaseException:
+            # Best-effort cleanup of the temp file on failure.
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
+            raise
+    except FileNotFoundError:
         raise
 
 

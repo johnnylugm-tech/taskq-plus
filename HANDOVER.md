@@ -86,3 +86,13 @@ Phase 3: 8/8 FRs Gate 1 PASS. Gate 2 (score=95.65) — quality_complete. P4 entr
 
 ---
 *由 `HandoverGenerator` 自動生成。下次 push 時此檔案將被覆寫。*
+
+## Sync Blocked — manual push required
+
+The Phase 3 advance handover commit landed locally but `git push origin main` did not pass the pre-push hook:
+
+```
+SYNC: FAIL — pre-push hook blocked: 4 property invariants declared but no property-based test executes them (FR-03, FR-04, FR-06, FR-08), and 7 reliability lint warnings (py-mkstemp-outside-try in storage/atomic.py:28, storage/breaker_store.py:54, storage/cache_store.py:64, storage/task_store.py:42; py-pragma-no-cover in cli/commands.py:435, storage/atomic.py:38, storage/atomic.py:69)
+```
+
+Resolve the blocker(s) above, then run `git push origin main` manually. Do NOT use `--no-verify` without explicit human sign-off.
