@@ -51,7 +51,18 @@ if str(SRC) not in sys.path:
 
 # In-process imports (these DO get tracked by coverage; subprocess tests do NOT).
 from taskq_plus.cli import commands as cli_commands  # noqa: E402
-from taskq_plus.cli.commands import dispatch, main  # noqa: E402
+from taskq_plus.cli.commands import (  # noqa: E402
+    dispatch,
+    main,
+    submit_cmd,
+    run_cmd,
+    status_cmd,
+    list_cmd,
+    graph_cmd,
+    plugins_cmd,
+    export_cmd,
+    clear_cmd,
+)
 from taskq_plus.models.task import (  # noqa: E402
     MAX_COMMAND_LENGTH,
     TaskSubmission,
@@ -438,6 +449,18 @@ class TestDispatchInProcess:
         assert code == cli_commands.EXIT_VALIDATION_ERROR
         assert "unknown command" in err
 
+    def test_dispatch_routes_run(self, taskq_home, monkeypatch):
+        """dispatch(['run', ...]) routes through _run (line 695)."""
+        from taskq_plus.service import cache as cache_mod
+
+        def fake_execute_with_cache(task_id, use_cache=True):
+            return {"status": "done", "exit_code": 0}
+
+        monkeypatch.setattr(cache_mod, "execute_with_cache", fake_execute_with_cache)
+        append_task({"id": "abcdef01", "command": "echo hi", "status": "pending"})
+        code, out, err = _run_dispatch(["run", "abcdef01"], taskq_home)
+        assert code == 0
+
     def test_submit_empty_command(self, taskq_home):
         code, out, err = _run_dispatch(["submit", ""], taskq_home)
         assert code == cli_commands.EXIT_VALIDATION_ERROR
@@ -552,3 +575,688 @@ class TestDispatchInProcess:
             code = main()  # argv=None branch — covers line 159
         assert code == 0
         assert re.match(r"^[0-9a-f]{8}$", out.getvalue().strip())
+
+
+# ===========================================================================
+# In-process tests for FR-05 command handlers in cli/commands.py.
+# These call `submit_cmd` / `run_cmd` / `status_cmd` / `list_cmd` / `graph_cmd`
+# / `plugins_cmd` / `export_cmd` / `clear_cmd` directly so coverage tooling can
+# measure them. Each handler returns a plain dict and never prints.
+# ===========================================================================
+
+
+class TestSubmitCmdHandler:
+    """submit_cmd (FR-05) — full happy path + cycle/depth/audit."""
+
+    def test_happy_path_returns_dict(self, taskq_home):
+        result = submit_cmd("echo hi")
+        assert isinstance(result, dict)
+        assert result["status"] == "pending"
+        assert re.match(r"^[0-9a-f]{8}$", result["id"])
+        assert result["command"] == "echo hi"
+        assert result["name"] is None
+
+    def test_happy_path_persists_task(self, taskq_home):
+        result = submit_cmd("echo hi", name="myname")
+        rec = find_by_id(result["id"])
+        assert rec is not None
+        assert rec["command"] == "echo hi"
+        assert rec["name"] == "myname"
+        assert rec["status"] == "pending"
+
+    def test_validation_error_raises(self, taskq_home):
+        with pytest.raises(cli_commands.SubmitValidationError):
+            submit_cmd("")
+        with pytest.raises(cli_commands.SubmitValidationError):
+            submit_cmd("echo hi; rm x")
+
+    def test_duplicate_name_rejected(self, taskq_home):
+        append_task(
+            {"id": "abcdef01", "command": "ls", "name": "myname", "status": "pending"}
+        )
+        with pytest.raises(cli_commands.SubmitValidationError) as exc_info:
+            submit_cmd("echo hi", name="myname")
+        assert "already used" in str(exc_info.value)
+
+    def test_missing_dependency_rejected(self, taskq_home):
+        with pytest.raises(cli_commands.SubmitValidationError) as exc_info:
+            submit_cmd("echo hi", after=["deadbeef"])
+        assert "does not exist" in str(exc_info.value)
+
+    def test_satisfied_dependency(self, taskq_home):
+        append_task({"id": "abcdef01", "command": "ls", "status": "pending"})
+        result = submit_cmd("echo hi", after=["abcdef01"])
+        assert find_by_id(result["id"])["depends_on"] == ["abcdef01"]
+
+    def test_depth_exceeded_raises_graph_error(self, taskq_home):
+        """Chain > MAX_DAG_DEPTH triggers the FR-06 depth cap."""
+        # Build a linear chain longer than the cap (33 nodes).
+        prev_id = None
+        for i in range(34):
+            rec = append_task(
+                {"id": f"{i:08x}", "command": f"echo {i}", "status": "pending",
+                 "depends_on": [prev_id] if prev_id else []}
+            )
+            prev_id = rec["id"]
+        with pytest.raises(cli_commands.GraphError) as exc_info:
+            submit_cmd("echo tip", after=[prev_id])
+        assert "too deep" in str(exc_info.value).lower()
+
+    def test_cycle_in_existing_store_rejected(self, taskq_home):
+        """A pre-existing cycle in tasks.json makes submit refuse (FR-06)."""
+        # Manually construct a cyclic store (not via submit_cmd to avoid the
+        # same validator running during seeding).
+        cyclic = [
+            {"id": "aaaaaaaa", "command": "echo a", "depends_on": ["cccccccc"], "status": "pending"},
+            {"id": "bbbbbbbb", "command": "echo b", "depends_on": ["aaaaaaaa"], "status": "pending"},
+            {"id": "cccccccc", "command": "echo c", "depends_on": ["bbbbbbbb"], "status": "pending"},
+        ]
+        save_tasks(cyclic)
+        with pytest.raises(cli_commands.GraphError) as exc_info:
+            submit_cmd("echo new")
+        assert "cycle" in str(exc_info.value).lower()
+
+    def test_emit_audit_legacy_line(self, taskq_home):
+        submit_cmd("echo hi")
+        audit = taskq_home / "audit.log"
+        assert audit.exists()
+        body = audit.read_text(encoding="utf-8")
+        assert "submit" in body
+
+    def test_emit_structured_audit(self, taskq_home):
+        """FR-08 audit.jsonl gets a structured record with correlation_id."""
+        submit_cmd("echo hi", name="hello")
+        journal = taskq_home / "audit.jsonl"
+        assert journal.exists()
+        lines = [ln for ln in journal.read_text(encoding="utf-8").splitlines() if ln.strip()]
+        assert lines, "audit.jsonl should have at least one event"
+        import json as _json
+
+        evt = _json.loads(lines[-1])
+        assert evt["event"] == "submit"
+        assert evt["detail"]["name"] == "hello"
+        assert "correlation_id" in evt
+        assert re.match(r"^[0-9a-f]{8}$", evt["correlation_id"])
+
+    def test_taskq_home_overrides_audit_dir(self, taskq_home, monkeypatch):
+        """audit.log is written under TASKQ_HOME (default)."""
+        # Submit writes the audit line using TASKQ_HOME; the journal lives
+        # under the same directory by default.
+        submit_cmd("echo hi")
+        assert (taskq_home / "audit.log").exists()
+
+
+class TestRunCmdHandler:
+    """run_cmd (FR-02 / FR-05) — run_all + single-task paths."""
+
+    def test_run_all_returns_dict(self, taskq_home, monkeypatch):
+        # Stub exec_run_all so we don't actually fork processes.
+        from taskq_plus.service import executor as exec_mod
+
+        calls = []
+
+        def fake_run_all():
+            calls.append("ran")
+
+        monkeypatch.setattr(exec_mod, "run_all", fake_run_all)
+        # re-import bound name in commands
+        monkeypatch.setattr(cli_commands, "exec_run_all", fake_run_all)
+        result = run_cmd(run_all=True)
+        assert result == {"ran_all": True, "exit_code": cli_commands.EXIT_OK}
+        assert calls == ["ran"]
+
+    def test_missing_task_id_raises(self, taskq_home):
+        with pytest.raises(cli_commands.RunValidationError):
+            run_cmd()
+        with pytest.raises(cli_commands.RunValidationError):
+            run_cmd(task_id="")
+
+    def test_unknown_task_id_raises(self, taskq_home):
+        with pytest.raises(cli_commands.RunValidationError) as exc_info:
+            run_cmd(task_id="deadbeef")
+        assert "does not exist" in str(exc_info.value)
+
+    def test_run_done_returns_exit_zero(self, taskq_home, monkeypatch):
+        append_task({"id": "abcdef01", "command": "echo ok", "status": "pending"})
+        from taskq_plus.service import cache as cache_mod
+
+        def fake_execute_with_cache(task_id, use_cache=True):
+            return {"status": "done", "exit_code": 0, "result": "ok"}
+
+        monkeypatch.setattr(cache_mod, "execute_with_cache", fake_execute_with_cache)
+        result = run_cmd(task_id="abcdef01")
+        assert result["exit_code"] == 0
+
+    def test_run_timeout_returns_exit_4(self, taskq_home, monkeypatch):
+        append_task({"id": "abcdef01", "command": "sleep 9", "status": "pending"})
+        from taskq_plus.service import cache as cache_mod
+
+        def fake_execute_with_cache(task_id, use_cache=True):
+            return {"status": "timeout", "exit_code": 4}
+
+        monkeypatch.setattr(cache_mod, "execute_with_cache", fake_execute_with_cache)
+        result = run_cmd(task_id="abcdef01")
+        assert result["exit_code"] == 4
+
+    def test_run_int_exit_code_propagates(self, taskq_home, monkeypatch):
+        """Cache HIT (exit_code=0) propagates verbatim — covers lines 343-347."""
+        append_task({"id": "abcdef01", "command": "echo hi", "status": "pending"})
+        from taskq_plus.service import cache as cache_mod
+
+        def fake_execute_with_cache(task_id, use_cache=True):
+            return {"status": "done", "exit_code": 0, "cached": True}
+
+        monkeypatch.setattr(cache_mod, "execute_with_cache", fake_execute_with_cache)
+        result = run_cmd(task_id="abcdef01")
+        assert result["exit_code"] == 0
+        assert result.get("cached") is True
+
+    def test_run_status_done_without_exit_code(self, taskq_home, monkeypatch):
+        """status==done with no int exit_code → EXIT_OK (line 351)."""
+        append_task({"id": "abcdef01", "command": "echo hi", "status": "pending"})
+        from taskq_plus.service import cache as cache_mod
+
+        def fake_execute_with_cache(task_id, use_cache=True):
+            return {"status": "done"}  # no exit_code int
+
+        monkeypatch.setattr(cache_mod, "execute_with_cache", fake_execute_with_cache)
+        result = run_cmd(task_id="abcdef01")
+        assert result["exit_code"] == 0
+
+    def test_run_status_timeout_without_exit_code(self, taskq_home, monkeypatch):
+        """status==timeout with no int exit_code → EXIT_TIMEOUT (line 353)."""
+        append_task({"id": "abcdef01", "command": "echo hi", "status": "pending"})
+        from taskq_plus.service import cache as cache_mod
+
+        def fake_execute_with_cache(task_id, use_cache=True):
+            return {"status": "timeout"}  # no exit_code int
+
+        monkeypatch.setattr(cache_mod, "execute_with_cache", fake_execute_with_cache)
+        result = run_cmd(task_id="abcdef01")
+        assert result["exit_code"] == 4
+
+    def test_run_returns_none_raises_internal(self, taskq_home, monkeypatch):
+        """execute_with_cache returning None → RunInternalError (line 338)."""
+        append_task({"id": "abcdef01", "command": "echo hi", "status": "pending"})
+        from taskq_plus.service import cache as cache_mod
+
+        def fake_execute_with_cache(task_id, use_cache=True):
+            return None
+
+        monkeypatch.setattr(cache_mod, "execute_with_cache", fake_execute_with_cache)
+        with pytest.raises(cli_commands.RunInternalError):
+            run_cmd(task_id="abcdef01")
+
+    def test_run_unknown_status_returns_failed(self, taskq_home, monkeypatch):
+        """When status is not done/timeout, return EXIT_FAILED (1) — line 354."""
+        append_task({"id": "abcdef01", "command": "echo hi", "status": "pending"})
+        from taskq_plus.service import cache as cache_mod
+
+        def fake_execute_with_cache(task_id, use_cache=True):
+            return {"status": "blocked", "exit_code": None}
+
+        monkeypatch.setattr(cache_mod, "execute_with_cache", fake_execute_with_cache)
+        result = run_cmd(task_id="abcdef01")
+        assert result["exit_code"] == cli_commands.EXIT_FAILED
+
+
+class TestStatusCmdHandler:
+    """status_cmd (FR-05) — full record + validation errors."""
+
+    def test_returns_full_record(self, taskq_home):
+        append_task(
+            {
+                "id": "abcdef01",
+                "command": "echo hi",
+                "name": "foo",
+                "status": "pending",
+                "depends_on": [],
+                "created_at": "2026-01-01T00:00:00Z",
+            }
+        )
+        rec = status_cmd("abcdef01")
+        assert rec["id"] == "abcdef01"
+        assert rec["name"] == "foo"
+
+    def test_missing_id_raises(self, taskq_home):
+        with pytest.raises(cli_commands.StatusValidationError):
+            status_cmd("")
+
+    def test_unknown_id_raises(self, taskq_home):
+        with pytest.raises(cli_commands.StatusValidationError) as exc_info:
+            status_cmd("deadbeef")
+        assert "does not exist" in str(exc_info.value)
+
+
+class TestListCmdHandler:
+    """list_cmd (FR-05) — full list + status filter."""
+
+    def test_empty_store(self, taskq_home):
+        result = list_cmd()
+        assert result == {"tasks": [], "count": 0}
+
+    def test_returns_all_tasks(self, taskq_home):
+        append_task({"id": "aaaaaaaa", "command": "echo a", "status": "pending"})
+        append_task({"id": "bbbbbbbb", "command": "echo b", "status": "done"})
+        result = list_cmd()
+        assert result["count"] == 2
+        assert {t["id"] for t in result["tasks"]} == {"aaaaaaaa", "bbbbbbbb"}
+
+    def test_status_filter(self, taskq_home):
+        append_task({"id": "aaaaaaaa", "command": "echo a", "status": "pending"})
+        append_task({"id": "bbbbbbbb", "command": "echo b", "status": "done"})
+        result = list_cmd(status_filter="pending")
+        assert result["count"] == 1
+        assert result["tasks"][0]["id"] == "aaaaaaaa"
+
+
+class TestGraphCmdHandler:
+    """graph_cmd (FR-05 / FR-06) — text and dot renderings."""
+
+    def test_text_format_with_no_tasks(self, taskq_home):
+        result = graph_cmd(format="text")
+        assert result["format"] == "text"
+        assert result["graph"] == ""
+
+    def test_text_format_with_tasks(self, taskq_home):
+        append_task(
+            {"id": "aaaaaaaa", "command": "echo a", "status": "pending", "depends_on": []}
+        )
+        append_task(
+            {
+                "id": "bbbbbbbb",
+                "command": "echo b",
+                "status": "pending",
+                "depends_on": ["aaaaaaaa"],
+            }
+        )
+        result = graph_cmd(format="text")
+        body = result["graph"]
+        assert "aaaaaaaa <- [(root)]" in body
+        assert "bbbbbbbb <- [aaaaaaaa]" in body
+
+    def test_dot_format_with_tasks(self, taskq_home):
+        append_task(
+            {"id": "aaaaaaaa", "command": "echo a", "status": "pending", "depends_on": []}
+        )
+        append_task(
+            {
+                "id": "bbbbbbbb",
+                "command": "echo b",
+                "status": "pending",
+                "depends_on": ["aaaaaaaa"],
+            }
+        )
+        result = graph_cmd(format="dot")
+        body = result["graph"]
+        assert body.startswith("digraph tasks {")
+        assert body.rstrip().endswith("}")
+        assert '"aaaaaaaa" -> "bbbbbbbb";' in body
+
+    def test_default_format_is_text(self, taskq_home):
+        result = graph_cmd()
+        assert result["format"] == "text"
+
+
+class TestPluginsCmdHandler:
+    """plugins_cmd (FR-05 / FR-07) — allowlist + missing-fallback."""
+
+    def test_empty_allowlist(self, taskq_home, monkeypatch):
+        monkeypatch.delenv("TASKQ_PLUGINS", raising=False)
+        result = plugins_cmd("list")
+        assert result["count"] == 0
+        assert result["plugins"] == []
+
+    def test_unknown_subcommand(self, taskq_home):
+        with pytest.raises(cli_commands.PluginValidationError):
+            plugins_cmd("not-list")
+
+    def test_invalid_plugin_name_rejected(self, taskq_home, monkeypatch):
+        """Path-form plugin name rejected by allowlist regex (FR-07)."""
+        monkeypatch.setenv("TASKQ_PLUGINS", "../evil.py")
+        with pytest.raises(cli_commands.PluginLoadError) as exc_info:
+            plugins_cmd("list")
+        assert "rejected by allowlist" in str(exc_info.value)
+
+    def test_valid_name_missing_module_fallback(self, taskq_home, monkeypatch):
+        """When a validly-named plugin can't be imported, fall back to 'missing'."""
+        monkeypatch.setenv("TASKQ_PLUGINS", "definitely_not_a_real_module_xyz")
+        result = plugins_cmd("list")
+        assert result["count"] == 1
+        assert result["plugins"][0]["name"] == "definitely_not_a_real_module_xyz"
+        assert result["plugins"][0]["status"] == "missing"
+        assert result["plugins"][0]["hooks"] == []
+
+    def test_valid_allowlist_with_loaded_plugin(self, taskq_home, monkeypatch):
+        """A loaded plugin reports hooks + status=loaded."""
+        import sys as _sys
+        import types as _types
+
+        # Create a fake plugin module with one hook.
+        fake = _types.ModuleType("taskq_plus_fake_plugin_xyz")
+        fake.pre_run = lambda task: None  # noqa: E731
+        _sys.modules["taskq_plus_fake_plugin_xyz"] = fake
+        monkeypatch.setenv("TASKQ_PLUGINS", "taskq_plus_fake_plugin_xyz")
+        try:
+            result = plugins_cmd("list")
+            assert result["count"] == 1
+            entry = result["plugins"][0]
+            assert entry["status"] == "loaded"
+            assert "pre_run" in entry["hooks"]
+        finally:
+            _sys.modules.pop("taskq_plus_fake_plugin_xyz", None)
+
+    def test_plugin_service_unavailable(self, taskq_home, monkeypatch):
+        """When service.plugins import fails, raise PluginLoadError (line 435-437)."""
+        import builtins as _builtins
+
+        real_import = _builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name == "taskq_plus.service.plugins":
+                raise ImportError("service unavailable")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(_builtins, "__import__", fake_import)
+        monkeypatch.setenv("TASKQ_PLUGINS", "any_name")
+        with pytest.raises(cli_commands.PluginLoadError) as exc_info:
+            plugins_cmd("list")
+        assert "plugin service unavailable" in str(exc_info.value)
+
+
+class TestExportCmdHandler:
+    """export_cmd (FR-05 / FR-08) — json / csv / md + validation error."""
+
+    @pytest.fixture
+    def seeded(self, taskq_home):
+        append_task(
+            {
+                "id": "aaaaaaaa",
+                "command": "echo hi",
+                "name": "n1",
+                "status": "pending",
+                "created_at": "2026-01-01T00:00:00Z",
+                "depends_on": [],
+            }
+        )
+        append_task(
+            {
+                "id": "bbbbbbbb",
+                "command": "ls",
+                "name": None,
+                "status": "done",
+                "created_at": "2026-01-02T00:00:00Z",
+                "depends_on": ["aaaaaaaa"],
+            }
+        )
+        return taskq_home
+
+    def test_export_json(self, seeded):
+        result = export_cmd(format="json")
+        assert result["format"] == "json"
+        assert result["content"].startswith("[")
+        assert len(result["tasks"]) == 2
+
+    def test_export_csv(self, seeded):
+        result = export_cmd(format="csv")
+        assert result["format"] == "csv"
+        # header row first
+        assert result["content"].splitlines()[0].startswith("id,command")
+
+    def test_export_md(self, seeded):
+        result = export_cmd(format="md")
+        assert result["format"] == "md"
+        assert "| id | command |" in result["content"]
+
+    def test_export_unsupported_format(self, seeded):
+        with pytest.raises(cli_commands.ExportValidationError):
+            export_cmd(format="xml")
+
+    def test_export_redacts_command(self, seeded):
+        """NFR-04 — secret patterns redacted in the emitted payload."""
+        append_task(
+            {
+                "id": "cccccccc",
+                "command": "echo sk-abcdef12345xyz",
+                "name": None,
+                "status": "pending",
+                "created_at": "2026-01-03T00:00:00Z",
+                "depends_on": [],
+            }
+        )
+        result = export_cmd(format="json")
+        assert "sk-abcdef12345xyz" not in result["content"]
+        assert "[REDACTED]" in result["content"]
+
+
+class TestClearCmdHandler:
+    """clear_cmd (FR-01 / FR-05) — wipe data files."""
+
+    def test_clear_empty_home(self, taskq_home):
+        result = clear_cmd()
+        assert result == {"cleared": True, "removed": []}
+
+    def test_clear_removes_present_files(self, taskq_home):
+        for name in ("tasks.json", "cache.json", "breaker.json", "audit.log"):
+            (taskq_home / name).write_text("{}", encoding="utf-8")
+        result = clear_cmd()
+        assert set(result["removed"]) == {"tasks.json", "cache.json", "breaker.json", "audit.log"}
+
+    def test_clear_partial_present(self, taskq_home):
+        (taskq_home / "tasks.json").write_text("[]", encoding="utf-8")
+        result = clear_cmd()
+        assert result["removed"] == ["tasks.json"]
+
+    def test_clear_swallows_unlink_oserror(self, taskq_home, monkeypatch):
+        """If unlink raises OSError, clear_cmd swallows it (line 508-510)."""
+        (taskq_home / "tasks.json").write_text("[]", encoding="utf-8")
+        from unittest.mock import patch
+
+        def fake_unlink(self, *args, **kwargs):
+            raise OSError("permission denied")
+
+        with patch.object(Path, "unlink", fake_unlink):
+            result = clear_cmd()
+        # nothing removed because unlink was blocked
+        assert result["removed"] == []
+        assert result["cleared"] is True
+
+
+class TestRedactHelpers:
+    """_redact + _redact_task (NFR-04 helpers in commands.py)."""
+
+    def test_redact_string_substitutes(self):
+        out = cli_commands._redact("Bearer abcdef")
+        assert "Bearer abcdef" not in out
+        assert "[REDACTED]" in out
+
+    def test_redact_non_string_returns_unchanged(self):
+        assert cli_commands._redact(123) == 123
+        assert cli_commands._redact(None) is None
+        assert cli_commands._redact(["x"]) == ["x"]
+
+    def test_redact_task_replaces_command_field(self):
+        out = cli_commands._redact_task(
+            {"id": "x", "command": "echo sk-abcdef12345xyz"}
+        )
+        assert out["command"] != "echo sk-abcdef12345xyz"
+        assert "[REDACTED]" in out["command"]
+        assert out["id"] == "x"
+
+    def test_redact_task_handles_missing_command(self):
+        out = cli_commands._redact_task({"id": "x"})
+        assert out["command"] == ""
+
+
+class TestStrictLoadTasks:
+    """_strict_load_tasks (FR-05 NFR-03) — file shape variants."""
+
+    def test_missing_file_returns_empty(self, taskq_home):
+        assert cli_commands._strict_load_tasks() == []
+
+    def test_list_shape(self, taskq_home):
+        tasks_path().write_text('[{"id": "a"}]', encoding="utf-8")
+        assert cli_commands._strict_load_tasks() == [{"id": "a"}]
+
+    def test_dict_with_tasks_key(self, taskq_home):
+        tasks_path().write_text('{"tasks": [{"id": "a"}]}', encoding="utf-8")
+        assert cli_commands._strict_load_tasks() == [{"id": "a"}]
+
+    def test_corrupt_json_raises(self, taskq_home):
+        tasks_path().write_text("not valid json {", encoding="utf-8")
+        with pytest.raises(cli_commands.StoreCorrupted):
+            cli_commands._strict_load_tasks()
+
+    def test_unexpected_shape_raises(self, taskq_home):
+        tasks_path().write_text('{"foo": "bar"}', encoding="utf-8")
+        with pytest.raises(cli_commands.StoreCorrupted):
+            cli_commands._strict_load_tasks()
+
+
+class TestResolveMaxDagDepth:
+    """_resolve_max_dag_depth — env-var override + invalid fallback."""
+
+    def test_default_when_unset(self, monkeypatch):
+        monkeypatch.delenv("TASKQ_MAX_DAG_DEPTH", raising=False)
+        assert cli_commands._resolve_max_dag_depth() == 32
+
+    def test_empty_string_falls_back_to_default(self, monkeypatch):
+        monkeypatch.setenv("TASKQ_MAX_DAG_DEPTH", "")
+        assert cli_commands._resolve_max_dag_depth() == 32
+
+    def test_explicit_value(self, monkeypatch):
+        monkeypatch.setenv("TASKQ_MAX_DAG_DEPTH", "10")
+        assert cli_commands._resolve_max_dag_depth() == 10
+
+    def test_invalid_value_falls_back_to_default(self, monkeypatch):
+        monkeypatch.setenv("TASKQ_MAX_DAG_DEPTH", "not-a-number")
+        assert cli_commands._resolve_max_dag_depth() == 32
+
+
+class TestTasksById:
+    """_tasks_by_id — skip tasks with missing ids."""
+
+    def test_empty_store_returns_empty(self, taskq_home):
+        assert cli_commands._tasks_by_id() == {}
+
+    def test_skips_tasks_without_id(self, taskq_home):
+        tasks_path().write_text(
+            '[{"command": "ls"}, {"id": "a", "command": "echo a"}]',
+            encoding="utf-8",
+        )
+        result = cli_commands._tasks_by_id()
+        assert "a" in result
+        assert len(result) == 1
+
+    def test_returns_by_id_mapping(self, taskq_home):
+        append_task({"id": "aaaaaaaa", "command": "echo a", "status": "pending"})
+        append_task({"id": "bbbbbbbb", "command": "echo b", "status": "pending"})
+        result = cli_commands._tasks_by_id()
+        assert set(result) == {"aaaaaaaa", "bbbbbbbb"}
+
+
+class TestComputeDepth:
+    """_compute_depth — calls into dag.chain_length."""
+
+    def test_depth_with_no_deps(self, taskq_home):
+        assert cli_commands._compute_depth([]) == 0
+
+    def test_depth_with_present_parent(self, taskq_home):
+        append_task({"id": "aaaaaaaa", "command": "echo a", "status": "pending"})
+        # depth counts edges: parent→child ⇒ depth=1; chain_length=2, minus 1.
+        assert cli_commands._compute_depth(["aaaaaaaa"]) == 1
+
+    def test_depth_with_missing_parent(self, taskq_home):
+        """Missing parent contributes 1 to chain_length (don't block submit)."""
+        # chain_length(["deadbeef"]) = 1 (new) + 1 (missing parent as 1-node
+        # chain) = 2; depth = edges = 2 - 1 = 1.
+        assert cli_commands._compute_depth(["deadbeef"]) == 1
+
+
+class TestLegacyRunDispatch:
+    """_run (legacy argparse-based run dispatch) — exit-code branches."""
+
+    def test_run_unknown_task_id_returns_failed(self, taskq_home, monkeypatch):
+        from taskq_plus.service import cache as cache_mod
+
+        def fake_execute_with_cache(task_id, use_cache=True):
+            return None
+
+        monkeypatch.setattr(cache_mod, "execute_with_cache", fake_execute_with_cache)
+        code = cli_commands._run(["deadbeef"])
+        assert code == cli_commands.EXIT_FAILED
+
+    def test_run_no_task_id_returns_validation_error(self, taskq_home):
+        code = cli_commands._run([])
+        assert code == cli_commands.EXIT_VALIDATION_ERROR
+
+    def test_run_all_returns_ok(self, taskq_home, monkeypatch):
+        from taskq_plus.service import executor as exec_mod
+
+        monkeypatch.setattr(exec_mod, "run_all", lambda: None)
+        monkeypatch.setattr(cli_commands, "exec_run_all", lambda: None)
+        code = cli_commands._run(["--all"])
+        assert code == cli_commands.EXIT_OK
+
+    def test_run_int_exit_code_propagates(self, taskq_home, monkeypatch):
+        from taskq_plus.service import cache as cache_mod
+
+        def fake_execute_with_cache(task_id, use_cache=True):
+            return {"status": "done", "exit_code": 0}
+
+        monkeypatch.setattr(cache_mod, "execute_with_cache", fake_execute_with_cache)
+        append_task({"id": "abcdef01", "command": "echo hi", "status": "pending"})
+        code = cli_commands._run(["abcdef01"])
+        assert code == 0
+
+    def test_run_status_done_branch(self, taskq_home, monkeypatch):
+        """Legacy _run status==done branch (line 610-611)."""
+        from taskq_plus.service import cache as cache_mod
+
+        def fake_execute_with_cache(task_id, use_cache=True):
+            return {"status": "done"}  # no int exit_code
+
+        monkeypatch.setattr(cache_mod, "execute_with_cache", fake_execute_with_cache)
+        append_task({"id": "abcdef01", "command": "echo hi", "status": "pending"})
+        code = cli_commands._run(["abcdef01"])
+        assert code == 0
+
+    def test_run_status_timeout_branch(self, taskq_home, monkeypatch):
+        """Legacy _run status==timeout branch (line 612-613)."""
+        from taskq_plus.service import cache as cache_mod
+
+        def fake_execute_with_cache(task_id, use_cache=True):
+            return {"status": "timeout"}  # no int exit_code
+
+        monkeypatch.setattr(cache_mod, "execute_with_cache", fake_execute_with_cache)
+        append_task({"id": "abcdef01", "command": "echo hi", "status": "pending"})
+        code = cli_commands._run(["abcdef01"])
+        assert code == 4
+
+    def test_run_status_other_branch(self, taskq_home, monkeypatch):
+        """Legacy _run falls through to EXIT_FAILED (line 614)."""
+        from taskq_plus.service import cache as cache_mod
+
+        def fake_execute_with_cache(task_id, use_cache=True):
+            return {"status": "blocked"}
+
+        monkeypatch.setattr(cache_mod, "execute_with_cache", fake_execute_with_cache)
+        append_task({"id": "abcdef01", "command": "echo hi", "status": "pending"})
+        code = cli_commands._run(["abcdef01"])
+        assert code == 1
+
+
+class TestAtomicWriteExtraBranches:
+    """_atomic_write_json — outer FileNotFoundError re-raise branch."""
+
+    def test_filenotfounderror_outer_branch_propagates(self, taskq_home, monkeypatch):
+        """Outer except FileNotFoundError branch re-raises — line 58."""
+        import tempfile as _tempfile
+        from unittest.mock import patch
+
+        target = taskq_home / "data.json"
+        with patch.object(_tempfile, "mkstemp", side_effect=FileNotFoundError("nope")):
+            with pytest.raises(FileNotFoundError):
+                _atomic_write_json(target, {"k": "v"})
+        # no target written
+        assert not target.exists()
