@@ -22,7 +22,7 @@ import os
 import re
 import sys
 from pathlib import Path
-from typing import Optional, Sequence
+from typing import Any, Optional, Sequence
 
 from pydantic import ValidationError
 
@@ -121,6 +121,24 @@ def _resolve_max_dag_depth() -> int:
         return 32
 
 
+def _tasks_by_id() -> dict[str, dict[str, Any]]:
+    """Index the persisted task store by task id.
+
+    Tasks whose `id` field is missing are skipped, so the returned mapping
+    satisfies the `Mapping[str, Mapping[str, Any]]` contract that
+    `service.dag.chain_length` / `check_depth` / `ancestor_tasks` declare.
+    Sharing one builder keeps the submit and depth paths on an identical
+    view of the store.
+    """
+    by_id: dict[str, dict[str, Any]] = {}
+    for task in load_tasks():
+        task_id = task.get("id")
+        if task_id is None:
+            continue
+        by_id[task_id] = task
+    return by_id
+
+
 def _compute_depth(depends_on: Sequence[str]) -> int:
     """Compute the longest dependency-chain length reachable from `depends_on`.
 
@@ -132,8 +150,7 @@ def _compute_depth(depends_on: Sequence[str]) -> int:
     Depth is edge-count based, i.e. one less than the node-count chain length
     that `service.dag.chain_length` reports (SPEC §7 reports node counts).
     """
-    by_id = {t.get("id"): t for t in load_tasks() if t.get("id") is not None}
-    return dag.chain_length(depends_on, by_id=by_id) - 1
+    return dag.chain_length(depends_on, by_id=_tasks_by_id()) - 1
 
 
 def _strict_load_tasks() -> list:
@@ -217,7 +234,7 @@ def submit_cmd(
                 f"dependency task id {dep_id!r} does not exist"
             )
 
-    by_id = {t.get("id"): t for t in load_tasks() if t.get("id") is not None}
+    by_id = _tasks_by_id()
 
     # FR-06 cycle rejection — validate that the *whole* store remains acyclic
     # after this submission is accepted. A new task with a fresh id cannot
