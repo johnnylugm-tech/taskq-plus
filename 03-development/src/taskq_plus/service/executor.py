@@ -1,6 +1,6 @@
 """Task executor — subprocess state machine + ThreadPoolExecutor batch.
 
-[FR-02] [FR-03] [FR-04]
+[FR-02] [FR-03] [FR-04] [FR-07]
 Citations:
   - SPEC.md §3 FR-02 (single-task run, --all batch, subprocess.run args).
   - SPEC.md §3 FR-02 (state machine: pending → running → done|failed|timeout|blocked).
@@ -14,11 +14,14 @@ Citations:
   - SPEC.md#L113 (FR-03 breaker OPEN → exit 3 + stderr `breaker open`).
   - SPEC.md §3 FR-04 (cache miss / expired → executor's `done` result feeds
     the cache write-back in `taskq_plus.service.cache`).
+  - SPEC.md §3 FR-07 (pre_run / post_run hook dispatch; plugin_error audit
+    on hook failure; 3-strikes-disable state stays inside the run).
 """
 
 from __future__ import annotations
 
 import datetime
+import json
 import os
 import shlex
 import subprocess
@@ -27,6 +30,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 from taskq_plus.service.breaker import (
@@ -38,6 +42,11 @@ from taskq_plus.service.breaker import (
     compute_backoff_seconds,
 )
 from taskq_plus.service.dag import topological_layers
+from taskq_plus.service.plugins import (
+    PluginFailure,
+    dispatch as plugin_dispatch,
+    load_plugins as plugin_load_plugins,
+)
 from taskq_plus.storage.breaker_store import read_breaker, write_breaker
 from taskq_plus.storage.task_store import (
     find_by_id,
@@ -140,6 +149,69 @@ def _set_status(task_id: str, updates: Dict[str, Any]) -> None:
                 t.update(updates)
                 break
         save_tasks(tasks)
+
+
+def _emit_audit(event: str, payload: Dict[str, Any]) -> None:
+    """Append a single audit event to `$TASKQ_HOME/audit.log` (FR-08 shape).
+
+    Mirrors the helper in `cli/commands.py` so the executor can write
+    `plugin_error` events without importing the CLI module (which would
+    cycle back through `service.executor`).
+
+    [FR-07] [FR-08]
+    Citations:
+      - SPEC.md §3 FR-08 (audit events appended to $TASKQ_HOME).
+      - SPEC.md §3 FR-07 (plugin_error events emitted per caught hook failure).
+    """
+    home = Path(os.environ.get("TASKQ_HOME", ".")).resolve()
+    audit_path = home / "audit.log"
+    line = json.dumps(
+        {"event": event, "ts": _now_iso(), **payload}, ensure_ascii=False
+    )
+    with audit_path.open("a", encoding="utf-8") as fh:
+        fh.write(line + "\n")
+
+
+def _emit_plugin_errors(failures: List[PluginFailure], task_id: str) -> None:
+    """Emit one `plugin_error` audit event per `PluginFailure` (SPEC §3 FR-07).
+
+    [FR-07] [FR-08]
+    Citations:
+      - SPEC.md §3 FR-07 (plugin raises → log a `plugin_error` audit event and
+        continue; task execution must not be interrupted).
+    """
+    for failure in failures:
+        _emit_audit(
+            "plugin_error",
+            {
+                "task_id": task_id,
+                "plugin": failure.plugin,
+                "hook": failure.hook,
+                "error": failure.error,
+            },
+        )
+
+
+def _dispatch_and_emit(
+    hook: str, plugins: list, *args: Any
+) -> "Any":
+    """Run `plugin_dispatch(hook, plugins, *args)` and emit audit events.
+
+    `task_id` is taken from `args[0]["id"]` when present (FR-07 dispatches
+    always receive the task dict as the first positional argument). Falls
+    back to an empty string when no id is available.
+
+    Returns the raw `PluginDispatchResult` so callers (e.g. kernel code
+    outside the executor) can inspect disabled / failures directly.
+    """
+    task_id = ""
+    if args:
+        first = args[0]
+        if isinstance(first, dict):
+            task_id = str(first.get("id") or "")
+    result = plugin_dispatch(hook, plugins, *args)
+    _emit_plugin_errors(result.failures, task_id)
+    return result
 
 
 def _resolve_timeout() -> float:
@@ -405,7 +477,7 @@ def run_with_retry(
          closes it and zeroes the counter, a final failure advances the counter
          (and trips it at the threshold).
 
-    [FR-03]
+    [FR-03] [FR-07]
     Citations:
       - SPEC.md#L108 (重試上限與 `TASKQ_BACKOFF_BASE × 2^n`;sleep 可注入).
       - SPEC.md#L112 (連續最終失敗計數 ≥ threshold → `OPEN`).
@@ -414,6 +486,8 @@ def run_with_retry(
       - SPEC.md#L114 (`HALF_OPEN` 放行一個任務:成功 → `CLOSED` 計數歸零;
         失敗 → 重新 `OPEN`).
       - SPEC.md#L140 (exit code `3` breaker open).
+      - SPEC.md §3 FR-07 (pre_run / post_run dispatch; plugin_error audit
+        events; 3-strikes-disable stays inside one run).
     """
     config = _load_retry_config()
     breaker = Breaker.from_record(
@@ -431,12 +505,24 @@ def run_with_retry(
 
     sleep = sleep_fn if sleep_fn is not None else time.sleep
 
+    # FR-07: load the allowlist once per run; plugins=[] when TASKQ_PLUGINS
+    # is unset so the non-plugin paths (FR-02/FR-03/FR-04) pay no cost.
+    plugins = plugin_load_plugins()
+    task_record = dict(find_by_id(task_id) or {"id": task_id})
+
+    _dispatch_and_emit("pre_run", plugins, task_record)
+
     exit_code = run(task_id)
     attempt = 0
     while exit_code in RETRYABLE_EXITS and attempt < config.retry_limit:
         sleep(compute_backoff_seconds(attempt, config.backoff_base_seconds))
         exit_code = run(task_id)
         attempt += 1
+
+    # FR-07: post_run receives the final task record (after the executor has
+    # written `status` / `exit_code` / `stdout_tail` / `stderr_tail`).
+    finished = dict(find_by_id(task_id) or {"id": task_id})
+    _dispatch_and_emit("post_run", plugins, finished, finished)
 
     if exit_code == EXIT_OK:
         breaker.record_success()

@@ -398,26 +398,50 @@ def plugins_cmd(subcommand: str = "list") -> dict:
     [FR-05] [FR-07] [NFR-02]
     Citations:
       - SPEC.md §3 FR-05 (plugins list).
-      - SPEC.md §3 FR-07 (plugin allowlist regex; path-form names rejected).
+      - SPEC.md §3 FR-07 (plugin allowlist regex; path-form names rejected; hook
+        registration surfaced via `describe`).
     """
     if subcommand != "list":
         raise PluginValidationError(
             f"unknown plugins subcommand {subcommand!r}"
         )
 
+    # Delegate the allowlist + import to service.plugins so the CLI and the
+    # executor share one source of truth for the FR-07 regex, import path,
+    # and exit-6 error contract (SAD §2 L4 plugins.py).
+    try:
+        from taskq_plus.service.plugins import (
+            PLUGIN_NAME_RE,
+            PluginLoadError as _ServicePluginLoadError,
+            describe as _describe_plugins,
+            load_plugins as _load_plugins,
+        )
+    except ImportError as exc:  # pragma: no cover — module is part of SAB.
+        raise PluginLoadError(f"plugin service unavailable: {exc}") from exc
+
+    # Parse the allowlist FIRST so the regex validator can reject path-form /
+    # URL-form names with the documented exit-6 message (SPEC §3 FR-07).
     raw = os.environ.get("TASKQ_PLUGINS", "") or ""
-    plugins: list[dict] = []
-    for piece in raw.split(","):
-        name = piece.strip()
-        if not name:
-            continue
-        if not _PLUGIN_NAME_RE.match(name):
+    names = [piece.strip() for piece in raw.split(",") if piece.strip()]
+    for name in names:
+        if not PLUGIN_NAME_RE.match(name):
             raise PluginLoadError(
                 f"plugin name {name!r} rejected by allowlist"
             )
-        plugins.append({"name": name, "hooks": []})
 
-    return {"plugins": plugins, "count": len(plugins)}
+    # Try the real import path (FR-07). If a name passes the regex but the
+    # module is not installed, fall back to reporting it with empty hooks so
+    # the CLI stays usable as a "what's in the allowlist?" probe (FR-05
+    # backward-compat: `plugins_cmd` always returns a dict for valid names).
+    try:
+        loaded = _load_plugins()
+        described = _describe_plugins(loaded)
+    except _ServicePluginLoadError:
+        described = [
+            {"name": name, "hooks": [], "status": "missing"} for name in names
+        ]
+
+    return {"plugins": described, "count": len(described)}
 
 
 def export_cmd(format: str = "json") -> dict:  # noqa: A002

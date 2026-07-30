@@ -99,7 +99,10 @@ def render(payload: dict, as_json: bool) -> None:
 
     if "plugins" in payload:
         for p in payload["plugins"]:
-            sys.stdout.write(f"{p.get('name', '')}\n")
+            name = p.get("name", "")
+            hooks = ",".join(p.get("hooks", []) or [])
+            status = p.get("status", "")
+            sys.stdout.write(f"{name} {hooks} {status}\n")
         return
 
     sys.stdout.write(json.dumps(payload, indent=2, ensure_ascii=False))
@@ -243,13 +246,31 @@ def run(
 @_json_flag()
 @click.pass_context
 def status(ctx: click.Context, task_id: str) -> int:
-    """Show the full record for a task."""
+    """Show the full record for a task.
+
+    [FR-05] [FR-07]
+    Citations:
+      - SPEC.md §3 FR-05 (`status` outputs the full task record).
+      - SPEC.md §3 FR-07 (human-readable rendering reports the task id AND
+        the current status field so callers can confirm task completion
+        after a plugin-error event without re-running with `--json`).
+    """
     try:
         payload = commands.status_cmd(task_id)
     except commands.StatusValidationError as exc:
         _emit_error(str(exc))
         return EXIT_VALIDATION
-    _render_for(ctx, payload)
+    # FR-07: the human-readable rendering for `status` reports the task id AND
+    # the current status field (e.g. `abcdef12 done`) so callers can confirm
+    # task completion without re-running with `--json`. --json still emits the
+    # full task record verbatim via the standard FR-05 render path.
+    as_json = bool(ctx.obj.get("json", False)) if ctx.obj else False
+    if as_json:
+        _render_for(ctx, payload)
+    else:
+        task_id_str = str(payload.get("id", task_id))
+        status_str = str(payload.get("status", ""))
+        sys.stdout.write(f"{task_id_str} {status_str}\n")
     return EXIT_OK
 
 
