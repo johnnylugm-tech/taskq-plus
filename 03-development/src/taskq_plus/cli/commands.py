@@ -1,9 +1,10 @@
 """CLI command implementations.
 
-[FR-01] [FR-02]
+[FR-01] [FR-02] [FR-03]
 Citations:
   - SPEC.md §3 FR-01 (submit command, validation, audit emit).
   - SPEC.md §3 FR-02 (run / run --all dispatch).
+  - SPEC.md#L113 (FR-03: run rejected with exit 3 while the breaker is OPEN).
 """
 
 from __future__ import annotations
@@ -17,8 +18,8 @@ from typing import Optional, Sequence
 from pydantic import ValidationError
 
 from taskq_plus.models.task import TaskSubmission, generate_task_id
-from taskq_plus.service.executor import run as exec_run
 from taskq_plus.service.executor import run_all as exec_run_all
+from taskq_plus.service.executor import run_with_retry as exec_run_with_retry
 from taskq_plus.storage.task_store import (
     _now_iso,
     append_task,
@@ -92,10 +93,12 @@ def _build_run_parser() -> argparse.ArgumentParser:
 def _run(argv: Sequence[str]) -> int:
     """Execute the `run` subcommand.
 
-    [FR-02]
+    [FR-02] [FR-03]
     Citations:
       - SPEC.md §3 FR-02 (single-task run, batch --all via ThreadPoolExecutor).
       - SPEC.md §3 FR-02 (timeout → exit 4; exit 0 → exit 0; non-zero → exit 1).
+      - SPEC.md#L108 (single-task run retries with exponential backoff).
+      - SPEC.md#L113 (breaker OPEN → exit 3 + stderr `breaker open`).
     """
     parser = _build_run_parser()
     args = parser.parse_args(list(argv))
@@ -109,7 +112,7 @@ def _run(argv: Sequence[str]) -> int:
             file=sys.stderr,
         )
         return EXIT_VALIDATION_ERROR
-    return exec_run(args.task_id)
+    return exec_run_with_retry(args.task_id)
 
 
 def _submit(
