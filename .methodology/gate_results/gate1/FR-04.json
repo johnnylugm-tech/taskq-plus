@@ -1,6 +1,6 @@
 {
   "gate": 1,
-  "phase": 3,
+  "phase": 4,
   "fr_id": "FR-04",
   "overall_score": 100.0,
   "quality_complete": true,
@@ -14,7 +14,7 @@
     "type_safety": {
       "score": 100.0,
       "threshold": 100,
-      "tool_evidence": "{\"version\":\"1.1.409\",\"time\":\"1785418516661\",\"generalDiagnostics\":[],\"summary\":{\"filesAnalyzed\":14,\"errorCount\":0,\"warningCount\":0,\"informationCount\":0,\"timeInSec\":0.539}}"
+      "tool_evidence": "{\"version\": \"1.1.409\", \"time\": \"1785437509445\", \"generalDiagnostics\": [], \"summary\": {\"filesAnalyzed\": 23, \"errorCount\": 0, \"warningCount\": 0, \"informationCount\": 0, \"timeInSec\": 0.683}}"
     },
     "test_coverage": {
       "score": 100.0,
@@ -22,10 +22,10 @@
       "tests_passed": 30,
       "tests_failed": 0,
       "tests_skipped": 0,
-      "tool_evidence": "collected 30 items\n\ntests/test_fr04.py ..............................                        [100%]\n\n============================== 30 passed in 0.18s ==============================\nCoverage: 100% on cache.py and cache_store.py (132/132 statements, missing_lines:0). All 4 required tests present: test_fr04_a, test_fr04_b, test_fr04_c, test_fr04_d."
+      "tool_evidence": "30 passed in 0.27s. Coverage: percent_covered=100.0, missing_lines=0, covered_lines=132/132. Required tests test_fr04_a, test_fr04_b, test_fr04_c, test_fr04_d all present and passing."
     }
   },
-  "enforcer_sha": "0649bdbe353cb56e9263143fb8886c73ca163e62",
+  "enforcer_sha": "0d9aa16f8ee8c25c4d7f8a9b3cb88dace506e2c9",
   "composite_score": 100.0,
   "verdict": "PASS",
   "passed": true
