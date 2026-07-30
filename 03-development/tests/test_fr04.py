@@ -66,6 +66,11 @@ if str(SRC) not in sys.path:
 from taskq_plus.service.cache import (  # noqa: E402,F401
     CACHE_FILENAME,
     DEFAULT_CACHE_TTL_S,
+    _coerce_int,
+    _ensure_entries_blob,
+    _extract_result,
+    _parse_iso,
+    _resolve_ttl,
     build_cache_entry,
     cache_signature,
     execute_with_cache,
@@ -837,3 +842,452 @@ def test_taskq_cache_build_entry_and_lookup_roundtrip(taskq_home):
     )
     assert hit.get("result") == result_payload
     assert hit.get("cached_at") == entry.get("cached_at")
+
+
+# ---- cache.py internal helpers ------------------------------------------
+
+def test_taskq_cache_parse_iso_returns_none_for_non_string(taskq_home):
+    """_parse_iso returns None for non-string or empty inputs (line 69)."""
+    assert _parse_iso(None) is None
+    assert _parse_iso(123) is None
+    assert _parse_iso(["2026-07-30T00:00:00Z"]) is None
+    assert _parse_iso("") is None
+    # By contrast, a valid ISO string must parse.
+    valid = _parse_iso("2026-07-30T00:00:00Z")
+    assert isinstance(valid, float), (
+        f"_parse_iso of valid ISO must return float; got {valid!r}"
+    )
+
+
+def test_taskq_cache_parse_iso_returns_none_for_unparseable(taskq_home):
+    """_parse_iso returns None when fromisoformat raises (lines 73-74)."""
+    assert _parse_iso("not-a-timestamp") is None
+    assert _parse_iso("2026-13-45T99:99:99Z") is None
+    assert _parse_iso("2026-07-30T25:00:00Z") is None
+    assert _parse_iso("garbageZ") is None
+
+
+def test_taskq_cache_coerce_int_returns_none_for_unparseable(taskq_home):
+    """_coerce_int returns None when int() raises Type/ValueError (lines 81-82)."""
+    assert _coerce_int(None) is None
+    assert _coerce_int("not-an-int") is None
+    assert _coerce_int(object()) is None
+    assert _coerce_int([1, 2, 3]) is None
+    assert _coerce_int({"k": "v"}) is None
+    # Valid ints still parse.
+    assert _coerce_int("42") == 42
+    assert _coerce_int(7) == 7
+
+
+def test_taskq_cache_resolve_ttl_explicit_arg_wins(taskq_home, monkeypatch):
+    """_resolve_ttl explicit arg is returned regardless of env (line 90)."""
+    monkeypatch.setenv("TASKQ_CACHE_TTL", "1800")
+    assert _resolve_ttl(7200) == 7200
+    assert _resolve_ttl(0) == 0
+
+
+def test_taskq_cache_resolve_ttl_uses_env_when_explicit_none(taskq_home, monkeypatch):
+    """_resolve_ttl uses TASKQ_CACHE_TTL when explicit arg is None (lines 91-92)."""
+    monkeypatch.setenv("TASKQ_CACHE_TTL", "1800")
+    assert _resolve_ttl(None) == 1800
+    monkeypatch.setenv("TASKQ_CACHE_TTL", "60")
+    assert _resolve_ttl(None) == 60
+
+
+def test_taskq_cache_resolve_ttl_default_fallback(taskq_home, monkeypatch):
+    """_resolve_ttl falls back to DEFAULT_CACHE_TTL_S when both unset (line 93)."""
+    monkeypatch.delenv("TASKQ_CACHE_TTL", raising=False)
+    assert _resolve_ttl(None) == DEFAULT_CACHE_TTL_S
+    # Also when env is unparseable.
+    monkeypatch.setenv("TASKQ_CACHE_TTL", "not-an-int")
+    assert _resolve_ttl(None) == DEFAULT_CACHE_TTL_S
+
+
+def test_taskq_cache_extract_result_projects_task_record(taskq_home):
+    """_extract_result builds the cache entry's `result` block (line 98)."""
+    task = {
+        "status": "done",
+        "exit_code": 0,
+        "stdout_tail": "ok\n",
+        "stderr_tail": "",
+        "duration_ms": 12,
+    }
+    out = _extract_result(task)
+    assert out == {
+        "status": "done",
+        "exit_code": 0,
+        "stdout_tail": "ok\n",
+        "stderr_tail": "",
+        "duration_ms": 12,
+    }
+
+    # Defensive defaults: missing tail / duration fields come back as "" / 0.
+    sparse = _extract_result({"status": "done"})
+    assert sparse["stdout_tail"] == ""
+    assert sparse["stderr_tail"] == ""
+    assert sparse["duration_ms"] == 0
+
+
+def test_taskq_cache_ensure_entries_blob_rebuilds_malformed_entries(taskq_home):
+    """_ensure_entries_blob rebuilds entries when stored value is not a dict
+    (lines 119-120). Drives write_cache_entry to the rebuild branch by
+    pre-seeding a cache.json whose `entries` is a list (not a dict).
+    """
+    # Pre-seed with `entries` as a list — wrong type.
+    initial = {
+        "version": 1,
+        "entries": [],
+    }
+    prior = _with_home(taskq_home)
+    try:
+        write_cache(initial)
+    finally:
+        _restore_home(prior)
+
+    command = "echo rebuild"
+    signature_str = cache_signature(command)
+    fresh_result = {
+        "status": "done",
+        "exit_code": 0,
+        "stdout_tail": "rebuilt\n",
+        "stderr_tail": "",
+        "duration_ms": 1,
+    }
+    prior = _with_home(taskq_home)
+    try:
+        write_cache_entry(command, fresh_result, ttl_seconds=3600)
+    finally:
+        _restore_home(prior)
+
+    prior = _with_home(taskq_home)
+    try:
+        store = read_cache()
+    finally:
+        _restore_home(prior)
+    entries = store.get("entries")
+    assert isinstance(entries, dict), (
+        f"entries must be rebuilt as a dict; got {type(entries).__name__}"
+    )
+    assert signature_str in entries, (
+        f"new entry must be persisted after rebuild; "
+        f"entries={list(entries.keys())!r}"
+    )
+
+
+def test_taskq_cache_ensure_entries_blob_replaces_non_dict_store(taskq_home):
+    """_ensure_entries_blob returns a fresh dict when the store itself is not a dict."""
+    prior = _with_home(taskq_home)
+    try:
+        write_cache([1, 2, 3])  # top-level list — read_cache will return None, but
+    finally:
+        _restore_home(prior)
+
+    # When the in-memory `store` is not a dict, _ensure_entries_blob produces a
+    # fresh dict with the canonical shape. Call directly (the storage's
+    # read_cache normalises non-dict to None, so we exercise the helper here).
+    fresh = _ensure_entries_blob("not a dict")
+    assert fresh == {"version": 1, "entries": {}}, (
+        f"_ensure_entries_blob on non-dict must return canonical shape; "
+        f"got {fresh!r}"
+    )
+
+
+# ---- cache.py public API — uncovered branches ---------------------------
+
+def test_taskq_cache_lookup_returns_none_when_store_absent(taskq_home):
+    """lookup_cached_result returns None when cache.json is missing (line 171)."""
+    prior = _with_home(taskq_home)
+    try:
+        hit = lookup_cached_result("echo nowhere", ttl_seconds=3600)
+    finally:
+        _restore_home(prior)
+    assert hit is None, (
+        f"missing cache.json must produce no hit; got {hit!r}"
+    )
+
+
+def test_taskq_cache_lookup_returns_none_when_store_empty_dict(taskq_home):
+    """lookup_cached_result returns None when cache.json is an empty dict."""
+    prior = _with_home(taskq_home)
+    try:
+        write_cache({})
+    finally:
+        _restore_home(prior)
+    prior = _with_home(taskq_home)
+    try:
+        hit = lookup_cached_result("echo nowhere", ttl_seconds=3600)
+    finally:
+        _restore_home(prior)
+    assert hit is None, (
+        f"empty cache.json must produce no hit; got {hit!r}"
+    )
+
+
+def test_taskq_cache_lookup_returns_none_for_invalid_cached_at(taskq_home):
+    """lookup_cached_result returns None when entry's cached_at is unparseable
+    (line 177).
+    """
+    command = "echo badts"
+    signature_str = cache_signature(command)
+    payload = {
+        "version": 1,
+        "entries": {
+            signature_str: {
+                "result": {
+                    "status": "done",
+                    "exit_code": 0,
+                    "stdout_tail": "x\n",
+                    "stderr_tail": "",
+                    "duration_ms": 1,
+                },
+                "cached_at": "not-a-timestamp",
+            }
+        },
+    }
+    prior = _with_home(taskq_home)
+    try:
+        write_cache(payload)
+    finally:
+        _restore_home(prior)
+    prior = _with_home(taskq_home)
+    try:
+        hit = lookup_cached_result(command, ttl_seconds=3600)
+    finally:
+        _restore_home(prior)
+    assert hit is None, (
+        f"unparseable cached_at must yield no hit; got {hit!r}"
+    )
+
+
+def test_taskq_cache_execute_with_cache_returns_none_when_task_missing(
+    taskq_home, quiet_cache_env
+):
+    """execute_with_cache returns None when the task_id is not in the store
+    (line 237).
+    """
+    prior = _with_home(taskq_home)
+    try:
+        result = execute_with_cache("nonexistent_id", use_cache=True)
+    finally:
+        _restore_home(prior)
+    assert result is None, (
+        f"missing task_id must yield None; got {result!r}"
+    )
+
+
+def test_taskq_cache_execute_with_cache_miss_path_writes_on_done(
+    taskq_home, quiet_cache_env
+):
+    """execute_with_cache miss path (use_cache=False) runs the executor, on
+    `done` writes the result into cache.json (lines 251-266).
+    """
+    from taskq_plus.storage.task_store import append_task
+
+    command = "echo miss"
+    signature_str = cache_signature(command)
+
+    # Seed a task already in `done` state so the result.status == "done"
+    # branch fires after the spy runner records its exit code.
+    prior = _with_home(taskq_home)
+    try:
+        append_task({
+            "id": "task_miss",
+            "command": command,
+            "name": None,
+            "status": "done",
+            "exit_code": 0,
+            "stdout_tail": "miss\n",
+            "stderr_tail": "",
+            "duration_ms": 7,
+            "depends_on": [],
+        })
+    finally:
+        _restore_home(prior)
+
+    run_calls: list[str] = []
+
+    def spy_run(task_id: str) -> int:
+        run_calls.append(task_id)
+        return 0
+
+    captured_stdout = io.StringIO()
+    prior = _with_home(taskq_home)
+    try:
+        with redirect_stdout(captured_stdout):
+            result = execute_with_cache(
+                "task_miss",
+                use_cache=False,
+                ttl_seconds=3600,
+                run_fn=spy_run,
+            )
+    finally:
+        _restore_home(prior)
+
+    # Spy runner was invoked.
+    assert run_calls == ["task_miss"], (
+        f"miss path must invoke run_fn; got {run_calls!r}"
+    )
+    # Result was projected from the task record and exit_code overridden.
+    assert result is not None
+    assert result["status"] == "done"
+    assert result["exit_code"] == 0
+    assert result["exit_code"] == 0  # set from runner, not from task record
+    # No "cached: true" message on the miss path.
+    assert "cached: true" not in captured_stdout.getvalue()
+
+    # The done result must have been persisted into cache.json.
+    prior = _with_home(taskq_home)
+    try:
+        store = read_cache()
+    finally:
+        _restore_home(prior)
+    entries = (store or {}).get("entries", {})
+    assert signature_str in entries, (
+        f"miss path on done must persist entry; entries={list(entries.keys())!r}"
+    )
+
+
+def test_taskq_cache_execute_with_cache_miss_path_skips_write_on_non_done(
+    taskq_home, quiet_cache_env
+):
+    """execute_with_cache miss path skips write_cache_entry when status != done."""
+    from taskq_plus.storage.task_store import append_task
+
+    command = "echo notdone"
+    signature_str = cache_signature(command)
+
+    # Seed a task in `failed` state.
+    prior = _with_home(taskq_home)
+    try:
+        append_task({
+            "id": "task_failed",
+            "command": command,
+            "name": None,
+            "status": "failed",
+            "exit_code": 1,
+            "stdout_tail": "",
+            "stderr_tail": "boom\n",
+            "duration_ms": 3,
+            "depends_on": [],
+        })
+    finally:
+        _restore_home(prior)
+
+    def spy_run(task_id: str) -> int:
+        return 1
+
+    captured_stdout = io.StringIO()
+    prior = _with_home(taskq_home)
+    try:
+        with redirect_stdout(captured_stdout):
+            result = execute_with_cache(
+                "task_failed",
+                use_cache=False,
+                ttl_seconds=3600,
+                run_fn=spy_run,
+            )
+    finally:
+        _restore_home(prior)
+
+    assert result is not None
+    assert result["status"] == "failed"
+    assert result["exit_code"] == 1
+
+    # Non-done status must NOT have written into cache.json.
+    prior = _with_home(taskq_home)
+    try:
+        store = read_cache()
+    finally:
+        _restore_home(prior)
+    entries = (store or {}).get("entries", {})
+    assert signature_str not in entries, (
+        f"non-done result must NOT be cached; entries={list(entries.keys())!r}"
+    )
+
+
+# ---- cache_store.py — uncovered branches --------------------------------
+
+def test_taskq_cache_store_write_cache_cleans_up_on_failure(taskq_home):
+    """write_cache raises and cleans up its temp file when json.dump fails
+    (lines 71-77). Triggers the exception handler by passing a record with
+    a non-serialisable value (set).
+    """
+    bad_record = {"version": 1, "entries": {"k": {"v": {1, 2, 3}}}}
+    prior = _with_home(taskq_home)
+    try:
+        with pytest.raises(TypeError):
+            write_cache(bad_record)
+    finally:
+        _restore_home(prior)
+
+    # Temp files must not be left behind on the failure path.
+    leaked = sorted(p.name for p in taskq_home.glob("cache.json.*.tmp"))
+    assert leaked == [], (
+        f"write_cache must remove its temp file on failure; leaked={leaked!r}"
+    )
+    # And no cache.json should have been moved into place.
+    assert not (taskq_home / "cache.json").exists(), (
+        "write_cache must not produce cache.json on failure"
+    )
+
+
+def test_taskq_cache_store_read_returns_none_for_corrupt_json(taskq_home):
+    """read_cache returns None when cache.json is unparseable (lines 99-100)."""
+    cache_file = taskq_home / "cache.json"
+    cache_file.write_text("not valid json {{{", encoding="utf-8")
+    prior = _with_home(taskq_home)
+    try:
+        result = read_cache()
+    finally:
+        _restore_home(prior)
+    assert result is None, (
+        f"corrupt cache.json must yield None; got {result!r}"
+    )
+
+
+def test_taskq_cache_store_read_returns_none_for_non_dict_json(taskq_home):
+    """read_cache returns None when cache.json holds a JSON list (line 103)."""
+    cache_file = taskq_home / "cache.json"
+    cache_file.write_text("[1, 2, 3]", encoding="utf-8")
+    prior = _with_home(taskq_home)
+    try:
+        result = read_cache()
+    finally:
+        _restore_home(prior)
+    assert result is None, (
+        f"non-dict cache.json must yield None; got {result!r}"
+    )
+
+
+def test_taskq_cache_store_read_returns_none_for_json_scalar(taskq_home):
+    """read_cache returns None when cache.json holds a JSON scalar."""
+    cache_file = taskq_home / "cache.json"
+    cache_file.write_text("42", encoding="utf-8")
+    prior = _with_home(taskq_home)
+    try:
+        result = read_cache()
+    finally:
+        _restore_home(prior)
+    assert result is None, (
+        f"JSON scalar in cache.json must yield None; got {result!r}"
+    )
+
+
+def test_taskq_cache_store_write_cache_swallows_unlink_failure(taskq_home, monkeypatch):
+    """write_cache's inner cleanup swallows OSError from os.unlink and still
+    re-raises the original exception (lines 75-76).
+    """
+    import taskq_plus.storage.cache_store as cache_store_mod
+
+    def fake_unlink(_path):
+        raise OSError("simulated unlink failure")
+
+    monkeypatch.setattr(cache_store_mod.os, "unlink", fake_unlink)
+
+    bad_record = {"version": 1, "entries": {"k": {"v": {1, 2, 3}}}}
+    prior = _with_home(taskq_home)
+    try:
+        with pytest.raises(TypeError):
+            write_cache(bad_record)
+    finally:
+        _restore_home(prior)
