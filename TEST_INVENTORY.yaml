@@ -1,20 +1,959 @@
-# TEST_INVENTORY.yaml — P1 Naming Authority
-# Maps every FR to expected test function names. These are the AUTHORITATIVE names
-# that derive_test_cases.md preserves in TEST_SPEC.md (P2 single source of truth).
-# Specified per FR and per test category (unit/integration/cross_cutting).
-# If no name is specified for a category, derive_test_cases.md fills the gap with
-# names derived via the 7-Question Protocol.
-format_version: "1.1"
+# TEST_INVENTORY.yaml — P1 Per-AC Test Enumeration (Sub-Task 4/4 Naming Authority)
+#
+# Naming convention source: 01-requirements/TRACEABILITY_MATRIX.md §1.3
+#   test_<scope><NN>_<suffix>   where <suffix> matches the originating AC letter
+#   AC-FR-NN.x  -> test_frNN_x
+#   AC-NFR-NN.x -> test_nfrNN_x
+#
+# Cross-cutting / multi-AC overlap (e.g. NFR-02.a grep covers FR-02.e / FR-07.e)
+# is signalled via per-test metadata (cross_ref_frs / cross_ref_nfrs), NOT by
+# deleting the underlying FR-derived test entries.
+#
+# Loader contract:
+#   - first line MUST start with '# TEST_INVENTORY.yaml — '
+#   - top-level key 'test_inventory:' MUST exist
+#   - 'tests:' block enumerates one entry per tc_id (no range collapsing)
+#   - 'by_fr.*.tc_count', 'by_layer.*.count', 'total_test_cases'
+#     MUST equal the count of enumerated 'tests:' entries (no arithmetic drift)
 
-fr_tests:
-  FR-01:
-    unit:
-      - test_fr01_example_unit
-    integration:
-      - test_fr01_example_integration
+test_inventory:
+  format_version: "1.2"
+  source_matrix: "01-requirements/TRACEABILITY_MATRIX.md"
+  source_srs: "01-requirements/SRS.md"
+  total_test_cases: 63
+  fr_count: 34
+  nfr_count: 29
 
-cross_cutting:
-  security:
-    - test_security_example
-  deployment:
-    - test_deployment_example
+  tests:
+
+    # ─────────────────────────────────────────────────────────────────
+    # FR-01: 任務提交與驗證  (§3, 4 ACs) — layer: service
+    # ─────────────────────────────────────────────────────────────────
+    - tc_id: TC-FR-01-a
+      test_function: test_fr01_a
+      fr: FR-01
+      ac: AC-FR-01.a
+      srs_section: "§3 FR-01"
+      test_file: "03-development/tests/test_submission.py"
+      spec_ref: "SPEC §8 #4"
+      layer: service
+      description: "submit 'echo hi' — stdout is 8-hex id, exit 0"
+      cross_ref_frs: []
+      cross_ref_nfrs: []
+
+    - tc_id: TC-FR-01-b
+      test_function: test_fr01_b
+      fr: FR-01
+      ac: AC-FR-01.b
+      srs_section: "§3 FR-01"
+      test_file: "03-development/tests/test_submission.py"
+      spec_ref: "SPEC §8 #5"
+      layer: service
+      description: "submit '' — exit 2 (non-empty validation)"
+      cross_ref_frs: []
+      cross_ref_nfrs: []
+
+    - tc_id: TC-FR-01-c
+      test_function: test_fr01_c
+      fr: FR-01
+      ac: AC-FR-01.c
+      srs_section: "§3 FR-01"
+      test_file: "03-development/tests/test_submission.py"
+      spec_ref: "SPEC §8 #6"
+      layer: service
+      description: "submit 'echo hi; rm x' — exit 2 (injection character)"
+      cross_ref_frs: []
+      cross_ref_nfrs: [NFR-02]
+
+    - tc_id: TC-FR-01-d
+      test_function: test_fr01_d
+      fr: FR-01
+      ac: AC-FR-01.d
+      srs_section: "§3 FR-01 / §4 NFR-02"
+      test_file: "03-development/tests/test_submission.py"
+      spec_ref: "NFR-02 (one case per character)"
+      layer: service
+      description: "one test per blacklisted injection character ( ; | & $ > < ` ) asserting exit 2"
+      cross_ref_frs: []
+      cross_ref_nfrs: [NFR-02]
+
+    # ─────────────────────────────────────────────────────────────────
+    # FR-02: 任務執行器  (§3, 5 ACs) — layer: service
+    # ─────────────────────────────────────────────────────────────────
+    - tc_id: TC-FR-02-a
+      test_function: test_fr02_a
+      fr: FR-02
+      ac: AC-FR-02.a
+      srs_section: "§3 FR-02"
+      test_file: "03-development/tests/test_executor.py"
+      spec_ref: "SPEC §8 #7"
+      layer: service
+      description: "TASKQ_TASK_TIMEOUT=1 run <sleep-5-id> — status timeout, exit 4"
+      cross_ref_frs: []
+      cross_ref_nfrs: []
+
+    - tc_id: TC-FR-02-b
+      test_function: test_fr02_b
+      fr: FR-02
+      ac: AC-FR-02.b
+      srs_section: "§3 FR-02"
+      test_file: "03-development/tests/test_executor.py"
+      spec_ref: "SPEC §3 FR-02 state-machine mapping"
+      layer: service
+      description: "exit 0 → done; non-zero → failed (state-machine mapping)"
+      cross_ref_frs: []
+      cross_ref_nfrs: []
+
+    - tc_id: TC-FR-02-c
+      test_function: test_fr02_c
+      fr: FR-02
+      ac: AC-FR-02.c
+      srs_section: "§3 FR-02 / §3 FR-06"
+      test_file: "03-development/tests/test_executor.py"
+      spec_ref: "SPEC §3 FR-02 ThreadPoolExecutor contract"
+      layer: service
+      description: "run --all uses ThreadPoolExecutor with shared threading.Lock in DAG topo order"
+      cross_ref_frs: [FR-06]
+      cross_ref_nfrs: []
+
+    - tc_id: TC-FR-02-d
+      test_function: test_fr02_d
+      fr: FR-02
+      ac: AC-FR-02.d
+      srs_section: "§3 FR-02"
+      test_file: "03-development/tests/test_executor.py"
+      spec_ref: "SPEC §3 FR-02 result fields"
+      layer: service
+      description: "stdout_tail / stderr_tail bounded to last 2000 chars"
+      cross_ref_frs: []
+      cross_ref_nfrs: [NFR-04]
+
+    - tc_id: TC-FR-02-e
+      test_function: test_fr02_e
+      fr: FR-02
+      ac: AC-FR-02.e
+      srs_section: "§3 FR-02 / §4 NFR-02"
+      test_file: "03-development/tests/test_executor.py"
+      spec_ref: "SPEC §8 #15"
+      layer: service
+      description: "grep -rn 'shell=True' 03-development/src/ returns 0 hits"
+      cross_ref_frs: []
+      cross_ref_nfrs: [NFR-02]
+
+    # ─────────────────────────────────────────────────────────────────
+    # FR-03: 重試與斷路器  (§3, 4 ACs) — layer: service
+    # ─────────────────────────────────────────────────────────────────
+    - tc_id: TC-FR-03-a
+      test_function: test_fr03_a
+      fr: FR-03
+      ac: AC-FR-03.a
+      srs_section: "§3 FR-03"
+      test_file: "03-development/tests/test_breaker.py"
+      spec_ref: "SPEC §8 #8"
+      layer: service
+      description: "3 consecutive final failures → run returns exit 3; resumes after cooldown"
+      cross_ref_frs: []
+      cross_ref_nfrs: [NFR-03]
+
+    - tc_id: TC-FR-03-b
+      test_function: test_fr03_b
+      fr: FR-03
+      ac: AC-FR-03.b
+      srs_section: "§3 FR-03"
+      test_file: "03-development/tests/test_breaker.py"
+      spec_ref: "SPEC §3 FR-03 exponential backoff"
+      layer: service
+      description: "Retry uses TASKQ_BACKOFF_BASE × 2^n; sleep injectable (deterministic test)"
+      cross_ref_frs: []
+      cross_ref_nfrs: []
+
+    - tc_id: TC-FR-03-c
+      test_function: test_fr03_c
+      fr: FR-03
+      ac: AC-FR-03.c
+      srs_section: "§3 FR-03"
+      test_file: "03-development/tests/test_breaker.py"
+      spec_ref: "SPEC §3 FR-03 state machine"
+      layer: service
+      description: "Breaker state transitions CLOSED → OPEN → HALF_OPEN → CLOSED per SPEC"
+      cross_ref_frs: []
+      cross_ref_nfrs: []
+
+    - tc_id: TC-FR-03-d
+      test_function: test_fr03_d
+      fr: FR-03
+      ac: AC-FR-03.d
+      srs_section: "§3 FR-03 / §4 NFR-03"
+      test_file: "03-development/tests/test_breaker.py"
+      spec_ref: "NFR-03 recovery-time bound"
+      layer: service
+      description: "OPEN → CLOSED recovery time ≤ TASKQ_BREAKER_COOLDOWN + 1s"
+      cross_ref_frs: []
+      cross_ref_nfrs: [NFR-03]
+
+    # ─────────────────────────────────────────────────────────────────
+    # FR-04: 結果 TTL 快取  (§3, 4 ACs) — layer: service
+    # ─────────────────────────────────────────────────────────────────
+    - tc_id: TC-FR-04-a
+      test_function: test_fr04_a
+      fr: FR-04
+      ac: AC-FR-04.a
+      srs_section: "§3 FR-04"
+      test_file: "03-development/tests/test_cache.py"
+      spec_ref: "SPEC §8 #9"
+      layer: service
+      description: "Within TTL run --cached → cached: true, no subprocess executed"
+      cross_ref_frs: []
+      cross_ref_nfrs: []
+
+    - tc_id: TC-FR-04-b
+      test_function: test_fr04_b
+      fr: FR-04
+      ac: AC-FR-04.b
+      srs_section: "§3 FR-04"
+      test_file: "03-development/tests/test_cache.py"
+      spec_ref: "SPEC §3 FR-04 miss-path"
+      layer: service
+      description: "Expired cache → normal execution; on done, write to cache.json"
+      cross_ref_frs: []
+      cross_ref_nfrs: []
+
+    - tc_id: TC-FR-04-c
+      test_function: test_fr04_c
+      fr: FR-04
+      ac: AC-FR-04.c
+      srs_section: "§3 FR-04"
+      test_file: "03-development/tests/test_cache.py"
+      spec_ref: "SPEC §3 FR-04 cache key formula"
+      layer: service
+      description: "Cache signature key is sha256(command)"
+      cross_ref_frs: []
+      cross_ref_nfrs: []
+
+    - tc_id: TC-FR-04-d
+      test_function: test_fr04_d
+      fr: FR-04
+      ac: AC-FR-04.d
+      srs_section: "§3 FR-04 / §4 NFR-03"
+      test_file: "03-development/tests/test_cache.py"
+      spec_ref: "SPEC §3 FR-04 cache concurrency"
+      layer: service
+      description: "Cache read/write atomic and thread-safe, coexisting with FR-02 concurrency"
+      cross_ref_frs: [FR-02]
+      cross_ref_nfrs: [NFR-03]
+
+    # ─────────────────────────────────────────────────────────────────
+    # FR-05: CLI 整合  (§3, 4 ACs) — layer: cli
+    # ─────────────────────────────────────────────────────────────────
+    - tc_id: TC-FR-05-a
+      test_function: test_fr05_a
+      fr: FR-05
+      ac: AC-FR-05.a
+      srs_section: "§3 FR-05"
+      test_file: "03-development/tests/test_cli.py"
+      spec_ref: "SPEC §3 FR-05 subcommand table"
+      layer: cli
+      description: "Each subcommand (submit/run/status/list/graph/plugins/export/clear) wired via click, reachable via python -m taskq_plus"
+      cross_ref_frs: [FR-01, FR-02, FR-06, FR-07, FR-08]
+      cross_ref_nfrs: []
+
+    - tc_id: TC-FR-05-b
+      test_function: test_fr05_b
+      fr: FR-05
+      ac: AC-FR-05.b
+      srs_section: "§3 FR-05"
+      test_file: "03-development/tests/test_cli.py"
+      spec_ref: "SPEC §3 FR-05 --json flag"
+      layer: cli
+      description: "--json flag emits single-line JSON output"
+      cross_ref_frs: []
+      cross_ref_nfrs: []
+
+    - tc_id: TC-FR-05-c
+      test_function: test_fr05_c
+      fr: FR-05
+      ac: AC-FR-05.c
+      srs_section: "§3 FR-05 / §7"
+      test_file: "03-development/tests/test_cli.py"
+      spec_ref: "SPEC §3 / §7 exit-code map"
+      layer: cli
+      description: "Exit codes per SPEC §3 / §7 (0/2/3/4/5/6/1 map)"
+      cross_ref_frs: []
+      cross_ref_nfrs: []
+
+    - tc_id: TC-FR-05-d
+      test_function: test_fr05_d
+      fr: FR-05
+      ac: AC-FR-05.d
+      srs_section: "§3 FR-05 / §3 FR-08"
+      test_file: "03-development/tests/test_cli.py"
+      spec_ref: "SPEC §8 #14"
+      layer: cli
+      description: "export --format json / csv / md — three formats produce identical task count"
+      cross_ref_frs: [FR-08]
+      cross_ref_nfrs: []
+
+    # ─────────────────────────────────────────────────────────────────
+    # FR-06: 任務相依 DAG  (§3, 4 ACs) — layer: service
+    # ─────────────────────────────────────────────────────────────────
+    - tc_id: TC-FR-06-a
+      test_function: test_fr06_a
+      fr: FR-06
+      ac: AC-FR-06.a
+      srs_section: "§3 FR-06"
+      test_file: "03-development/tests/test_dag.py"
+      spec_ref: "SPEC §8 #10"
+      layer: service
+      description: "submit --after <a> then run --all — b runs after a; a not done → b is blocked"
+      cross_ref_frs: [FR-02]
+      cross_ref_nfrs: [NFR-03]
+
+    - tc_id: TC-FR-06-b
+      test_function: test_fr06_b
+      fr: FR-06
+      ac: AC-FR-06.b
+      srs_section: "§3 FR-06"
+      test_file: "03-development/tests/test_dag.py"
+      spec_ref: "SPEC §8 #11"
+      layer: service
+      description: "Cycle A→B→A → exit 5, stderr contains cycle path"
+      cross_ref_frs: []
+      cross_ref_nfrs: []
+
+    - tc_id: TC-FR-06-c
+      test_function: test_fr06_c
+      fr: FR-06
+      ac: AC-FR-06.c
+      srs_section: "§3 FR-06 / §7"
+      test_file: "03-development/tests/test_dag.py"
+      spec_ref: "SPEC §7 dependency depth cap"
+      layer: service
+      description: "Dependency chain depth > TASKQ_MAX_DAG_DEPTH → exit 5, stderr 'dependency chain too deep'"
+      cross_ref_frs: []
+      cross_ref_nfrs: []
+
+    - tc_id: TC-FR-06-d
+      test_function: test_fr06_d
+      fr: FR-06
+      ac: AC-FR-06.d
+      srs_section: "§3 FR-06"
+      test_file: "03-development/tests/test_dag.py"
+      spec_ref: "SPEC §3 FR-06 Kahn topo concurrency"
+      layer: service
+      description: "Kahn topological sort emits layer-by-layer; same-layer tasks schedulable concurrently"
+      cross_ref_frs: [FR-02]
+      cross_ref_nfrs: []
+
+    # ─────────────────────────────────────────────────────────────────
+    # FR-07: Plugin Hook 系統  (§3, 5 ACs) — layer: service
+    # ─────────────────────────────────────────────────────────────────
+    - tc_id: TC-FR-07-a
+      test_function: test_fr07_a
+      fr: FR-07
+      ac: AC-FR-07.a
+      srs_section: "§3 FR-07 / §4 NFR-02"
+      test_file: "03-development/tests/test_plugins.py"
+      spec_ref: "SPEC §8 #12"
+      layer: service
+      description: "TASKQ_PLUGINS='../evil.py' plugins list → exit 6 (path form rejected)"
+      cross_ref_frs: []
+      cross_ref_nfrs: [NFR-02]
+
+    - tc_id: TC-FR-07-b
+      test_function: test_fr07_b
+      fr: FR-07
+      ac: AC-FR-07.b
+      srs_section: "§3 FR-07 / §3 FR-08"
+      test_file: "03-development/tests/test_plugins.py"
+      spec_ref: "SPEC §8 #13"
+      layer: service
+      description: "Plugin pre_run raises → task still completes; audit.jsonl contains plugin_error event"
+      cross_ref_frs: [FR-08]
+      cross_ref_nfrs: []
+
+    - tc_id: TC-FR-07-c
+      test_function: test_fr07_c
+      fr: FR-07
+      ac: AC-FR-07.c
+      srs_section: "§3 FR-07"
+      test_file: "03-development/tests/test_plugins.py"
+      spec_ref: "SPEC §3 FR-07 3-strikes-disable clause"
+      layer: service
+      description: "Plugin failing 3 consecutive times within one run is disabled for that run"
+      cross_ref_frs: []
+      cross_ref_nfrs: []
+
+    - tc_id: TC-FR-07-d
+      test_function: test_fr07_d
+      fr: FR-07
+      ac: AC-FR-07.d
+      srs_section: "§3 FR-07"
+      test_file: "03-development/tests/test_plugins.py"
+      spec_ref: "SPEC §3 FR-07 plugins list output"
+      layer: service
+      description: "plugins list prints each plugin's module name, hooks, and load status"
+      cross_ref_frs: []
+      cross_ref_nfrs: []
+
+    - tc_id: TC-FR-07-e
+      test_function: test_fr07_e
+      fr: FR-07
+      ac: AC-FR-07.e
+      srs_section: "§3 FR-07 / §4 NFR-02"
+      test_file: "03-development/tests/test_plugins.py"
+      spec_ref: "SPEC §8 #15"
+      layer: service
+      description: "grep -rn 'eval(|exec(' 03-development/src/ returns 0 hits"
+      cross_ref_frs: []
+      cross_ref_nfrs: [NFR-02]
+
+    # ─────────────────────────────────────────────────────────────────
+    # FR-08: 結構化稽核日誌與匯出  (§3, 4 ACs) — layer: observability
+    # ─────────────────────────────────────────────────────────────────
+    - tc_id: TC-FR-08-a
+      test_function: test_fr08_a
+      fr: FR-08
+      ac: AC-FR-08.a
+      srs_section: "§3 FR-08"
+      test_file: "03-development/tests/test_audit.py"
+      spec_ref: "SPEC §3 FR-08 audit field set"
+      layer: observability
+      description: "Audit entry written with ts / event / task_id / correlation_id / detail fields per SPEC"
+      cross_ref_frs: []
+      cross_ref_nfrs: [NFR-04]
+
+    - tc_id: TC-FR-08-b
+      test_function: test_fr08_b
+      fr: FR-08
+      ac: AC-FR-08.b
+      srs_section: "§3 FR-08"
+      test_file: "03-development/tests/test_audit.py"
+      spec_ref: "SPEC §3 FR-08 correlation_id lifetime"
+      layer: observability
+      description: "Single CLI invocation shares one correlation_id across all triggered events"
+      cross_ref_frs: []
+      cross_ref_nfrs: []
+
+    - tc_id: TC-FR-08-c
+      test_function: test_fr08_c
+      fr: FR-08
+      ac: AC-FR-08.c
+      srs_section: "§3 FR-08 / §8"
+      test_file: "03-development/tests/test_audit.py"
+      spec_ref: "SPEC §8 #14"
+      layer: observability
+      description: "Three export formats produce identical task count + identical field set; CSV escaping correct"
+      cross_ref_frs: [FR-05]
+      cross_ref_nfrs: []
+
+    - tc_id: TC-FR-08-d
+      test_function: test_fr08_d
+      fr: FR-08
+      ac: AC-FR-08.d
+      srs_section: "§3 FR-08 / §4 NFR-04 / §8 #22"
+      test_file: "03-development/tests/test_audit.py"
+      spec_ref: "SPEC §8 #22"
+      layer: observability
+      description: "Audit log writes go through NFR-04 redaction (no secret on disk)"
+      cross_ref_frs: []
+      cross_ref_nfrs: [NFR-04]
+
+    # ─────────────────────────────────────────────────────────────────
+    # NFR-01: 效能預算  (§4, 2 ACs) — layer: cross_cutting.performance
+    # ─────────────────────────────────────────────────────────────────
+    - tc_id: TC-NFR-01-a
+      test_function: test_nfr01_a
+      nfr: NFR-01
+      ac: AC-NFR-01.a
+      srs_section: "§4 NFR-01"
+      test_file: "03-development/tests/test_performance.py"
+      spec_ref: "SPEC §8 #1 (benchmark)"
+      layer: cross_cutting.performance
+      description: "submit + status p95 over 100 iterations < 50ms (pytest-benchmark)"
+      cross_ref_frs: [FR-01, FR-05]
+      cross_ref_nfrs: []
+
+    - tc_id: TC-NFR-01-b
+      test_function: test_nfr01_b
+      nfr: NFR-01
+      ac: AC-NFR-01.b
+      srs_section: "§4 NFR-01"
+      test_file: "03-development/tests/test_performance.py"
+      spec_ref: "SPEC §8 (benchmark)"
+      layer: cross_cutting.performance
+      description: "Topological sort p95 over 200 tasks < 200ms (pytest-benchmark)"
+      cross_ref_frs: [FR-06]
+      cross_ref_nfrs: []
+
+    # ─────────────────────────────────────────────────────────────────
+    # NFR-02: 執行與載入安全  (§4, 4 ACs) — layer: cross_cutting.security
+    # ─────────────────────────────────────────────────────────────────
+    - tc_id: TC-NFR-02-a
+      test_function: test_nfr02_a
+      nfr: NFR-02
+      ac: AC-NFR-02.a
+      srs_section: "§4 NFR-02"
+      test_file: "03-development/tests/test_security.py"
+      spec_ref: "SPEC §8 #15"
+      layer: cross_cutting.security
+      description: "grep -rn 'shell=True|eval(|exec(' 03-development/src/ returns 0 hits"
+      cross_ref_frs: [FR-02, FR-07]
+      cross_ref_nfrs: []
+
+    - tc_id: TC-NFR-02-b
+      test_function: test_nfr02_b
+      nfr: NFR-02
+      ac: AC-NFR-02.b
+      srs_section: "§4 NFR-02 / §3 FR-01"
+      test_file: "03-development/tests/test_security.py"
+      spec_ref: "NFR-02 one-case-per-character"
+      layer: cross_cutting.security
+      description: "Each blacklisted character ( ; | & $ > < ` ) has a test case asserting exit 2"
+      cross_ref_frs: [FR-01]
+      cross_ref_nfrs: []
+
+    - tc_id: TC-NFR-02-c
+      test_function: test_nfr02_c
+      nfr: NFR-02
+      ac: AC-NFR-02.c
+      srs_section: "§4 NFR-02 / §3 FR-07"
+      test_file: "03-development/tests/test_security.py"
+      spec_ref: "SPEC §8 #12"
+      layer: cross_cutting.security
+      description: "Plugin name '../evil.py' → rejected with exit 6"
+      cross_ref_frs: [FR-07]
+      cross_ref_nfrs: []
+
+    - tc_id: TC-NFR-02-d
+      test_function: test_nfr02_d
+      nfr: NFR-02
+      ac: AC-NFR-02.d
+      srs_section: "§4 NFR-02 / §8"
+      test_file: "03-development/tests/test_security.py"
+      spec_ref: "SPEC §8 #19"
+      layer: cross_cutting.security
+      description: "bandit -r 03-development/src/ reports 0 HIGH and 0 MEDIUM"
+      cross_ref_frs: []
+      cross_ref_nfrs: []
+
+    # ─────────────────────────────────────────────────────────────────
+    # NFR-03: 錯誤處理與原子性  (§4, 4 ACs) — layer: storage
+    # ─────────────────────────────────────────────────────────────────
+    - tc_id: TC-NFR-03-a
+      test_function: test_nfr03_a
+      nfr: NFR-03
+      ac: AC-NFR-03.a
+      srs_section: "§4 NFR-03"
+      test_file: "03-development/tests/test_atomicity.py"
+      spec_ref: "NFR-03 atomic-write"
+      layer: storage
+      description: "Mid-write kill -9 → file remains parseable as valid JSON / JSONL"
+      cross_ref_frs: [FR-01, FR-03, FR-04]
+      cross_ref_nfrs: []
+
+    - tc_id: TC-NFR-03-b
+      test_function: test_nfr03_b
+      nfr: NFR-03
+      ac: AC-NFR-03.b
+      srs_section: "§4 NFR-03"
+      test_file: "03-development/tests/test_atomicity.py"
+      spec_ref: "NFR-03 no-swallowing rule"
+      layer: storage
+      description: "Codebase contains no bare except: / except Exception: pass / swallowed KeyboardInterrupt / SystemExit"
+      cross_ref_frs: []
+      cross_ref_nfrs: []
+
+    - tc_id: TC-NFR-03-c
+      test_function: test_nfr03_c
+      nfr: NFR-03
+      ac: AC-NFR-03.c
+      srs_section: "§4 NFR-03 / §3 FR-03"
+      test_file: "03-development/tests/test_atomicity.py"
+      spec_ref: "NFR-03 recovery-time bound"
+      layer: storage
+      description: "Breaker OPEN → CLOSED recovery time ≤ TASKQ_BREAKER_COOLDOWN + 1s"
+      cross_ref_frs: [FR-03]
+      cross_ref_nfrs: []
+
+    - tc_id: TC-NFR-03-d
+      test_function: test_nfr03_d
+      nfr: NFR-03
+      ac: AC-NFR-03.d
+      srs_section: "§4 NFR-03 / §7"
+      test_file: "03-development/tests/test_atomicity.py"
+      spec_ref: "SPEC §7 store corruption behavior"
+      layer: storage
+      description: "Corrupted tasks.json at startup → exit 1, stderr contains 'store corrupted'; no silent rebuild"
+      cross_ref_frs: [FR-01]
+      cross_ref_nfrs: []
+
+    # ─────────────────────────────────────────────────────────────────
+    # NFR-04: 敏感資料遮蔽  (§4, 2 ACs) — layer: observability
+    # ─────────────────────────────────────────────────────────────────
+    - tc_id: TC-NFR-04-a
+      test_function: test_nfr04_a
+      nfr: NFR-04
+      ac: AC-NFR-04.a
+      srs_section: "§4 NFR-04"
+      test_file: "03-development/tests/test_redaction.py"
+      spec_ref: "SPEC §8 #22"
+      layer: observability
+      description: "Command containing secret → grep -c 'sk-' $TASKQ_HOME/audit.jsonl returns 0"
+      cross_ref_frs: [FR-08]
+      cross_ref_nfrs: []
+
+    - tc_id: TC-NFR-04-b
+      test_function: test_nfr04_b
+      nfr: NFR-04
+      ac: AC-NFR-04.b
+      srs_section: "§4 NFR-04"
+      test_file: "03-development/tests/test_redaction.py"
+      spec_ref: "NFR-04 before-write invariant"
+      layer: observability
+      description: "Redaction runs before the disk write (asserts on file contents, not on post-load string)"
+      cross_ref_frs: [FR-08]
+      cross_ref_nfrs: []
+
+    # ─────────────────────────────────────────────────────────────────
+    # NFR-05: 文件覆蓋  (§4, 1 AC) — layer: cross_cutting.documentation
+    # ─────────────────────────────────────────────────────────────────
+    - tc_id: TC-NFR-05-a
+      test_function: test_nfr05_a
+      nfr: NFR-05
+      ac: AC-NFR-05.a
+      srs_section: "§4 NFR-05"
+      test_file: "03-development/tests/test_docstrings.py"
+      spec_ref: "NFR-05 ast-docstrings 100% coverage"
+      layer: cross_cutting.documentation
+      description: "ast-docstrings measurement reports 100% coverage of public symbols with [FR-XX]/[NFR-XX] tags"
+      cross_ref_frs: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08]
+      cross_ref_nfrs: [NFR-01, NFR-02, NFR-03, NFR-04, NFR-06, NFR-07, NFR-08, NFR-09, NFR-10, NFR-11, NFR-12]
+
+    # ─────────────────────────────────────────────────────────────────
+    # NFR-06: 架構分層契約  (§4, 3 ACs) — layer: cross_cutting.architecture
+    # ─────────────────────────────────────────────────────────────────
+    - tc_id: TC-NFR-06-a
+      test_function: test_nfr06_a
+      nfr: NFR-06
+      ac: AC-NFR-06.a
+      srs_section: "§4 NFR-06"
+      test_file: "03-development/tests/test_architecture.py"
+      spec_ref: "NFR-06 5-layer contract"
+      layer: cross_cutting.architecture
+      description: ".importlinter exists at project root and declares the 5-layer contract verbatim"
+      cross_ref_frs: []
+      cross_ref_nfrs: []
+
+    - tc_id: TC-NFR-06-b
+      test_function: test_nfr06_b
+      nfr: NFR-06
+      ac: AC-NFR-06.b
+      srs_section: "§4 NFR-06 / §8"
+      test_file: "03-development/tests/test_architecture.py"
+      spec_ref: "SPEC §8 #17"
+      layer: cross_cutting.architecture
+      description: "lint-imports exits 0"
+      cross_ref_frs: []
+      cross_ref_nfrs: []
+
+    - tc_id: TC-NFR-06-c
+      test_function: test_nfr06_c
+      nfr: NFR-06
+      ac: AC-NFR-06.c
+      srs_section: "§4 NFR-06"
+      test_file: "03-development/tests/test_architecture.py"
+      spec_ref: "NFR-06 anti-weakening clause"
+      layer: cross_cutting.architecture
+      description: "Code review confirms contract not weakened by wildcard ignore_imports or single-forbidden substitution"
+      cross_ref_frs: []
+      cross_ref_nfrs: []
+
+    # ─────────────────────────────────────────────────────────────────
+    # NFR-07: 依賴與授權合規  (§4, 3 ACs) — layer: cross_cutting.license
+    # ─────────────────────────────────────────────────────────────────
+    - tc_id: TC-NFR-07-a
+      test_function: test_nfr07_a
+      nfr: NFR-07
+      ac: AC-NFR-07.a
+      srs_section: "§4 NFR-07 / §8"
+      test_file: "03-development/tests/test_licenses.py"
+      spec_ref: "SPEC §8 #18"
+      layer: cross_cutting.license
+      description: "pip-licenses --format=json returns each dependency's license ∈ {MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0}"
+      cross_ref_frs: []
+      cross_ref_nfrs: []
+
+    - tc_id: TC-NFR-07-b
+      test_function: test_nfr07_b
+      nfr: NFR-07
+      ac: AC-NFR-07.b
+      srs_section: "§4 NFR-07"
+      test_file: "03-development/tests/test_licenses.py"
+      spec_ref: "NFR-07 pinning rule"
+      layer: cross_cutting.license
+      description: "requirements.txt pins every runtime dependency with =="
+      cross_ref_frs: []
+      cross_ref_nfrs: []
+
+    - tc_id: TC-NFR-07-c
+      test_function: test_nfr07_c
+      nfr: NFR-07
+      ac: AC-NFR-07.c
+      srs_section: "§4 NFR-07 / §2 C-13"
+      test_file: "03-development/tests/test_licenses.py"
+      spec_ref: "NFR-07 SBOM output"
+      layer: cross_cutting.license
+      description: "08-config/SBOM.json lists each dependency with name, version, license"
+      cross_ref_frs: []
+      cross_ref_nfrs: []
+
+    # ─────────────────────────────────────────────────────────────────
+    # NFR-08: 變異測試  (§4, 2 ACs) — layer: cross_cutting.mutation
+    # ─────────────────────────────────────────────────────────────────
+    - tc_id: TC-NFR-08-a
+      test_function: test_nfr08_a
+      nfr: NFR-08
+      ac: AC-NFR-08.a
+      srs_section: "§4 NFR-08 / §8"
+      test_file: "03-development/tests/test_mutation.py"
+      spec_ref: "SPEC §8 #20"
+      layer: cross_cutting.mutation
+      description: "mutmut run + mutmut results reports mutation score ≥ 70"
+      cross_ref_frs: []
+      cross_ref_nfrs: []
+
+    - tc_id: TC-NFR-08-b
+      test_function: test_nfr08_b
+      nfr: NFR-08
+      ac: AC-NFR-08.b
+      srs_section: "§4 NFR-08"
+      test_file: "03-development/tests/test_mutation.py"
+      spec_ref: "NFR-08 config flag"
+      layer: cross_cutting.mutation
+      description: "harness_config.json has features.mutation_testing: true"
+      cross_ref_frs: []
+      cross_ref_nfrs: []
+
+    # ─────────────────────────────────────────────────────────────────
+    # NFR-09: 驗證真實性 (零 skip 鐵律)  (§4, 3 ACs) — layer: cross_cutting.quality
+    # ─────────────────────────────────────────────────────────────────
+    - tc_id: TC-NFR-09-a
+      test_function: test_nfr09_a
+      nfr: NFR-09
+      ac: AC-NFR-09.a
+      srs_section: "§4 NFR-09 / §8"
+      test_file: "03-development/tests/test_authenticity.py"
+      spec_ref: "SPEC §8 #1"
+      layer: cross_cutting.quality
+      description: "pytest 03-development/tests -q exits 0 and skipped count is 0"
+      cross_ref_frs: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08]
+      cross_ref_nfrs: [NFR-01, NFR-02, NFR-03, NFR-04, NFR-05, NFR-06, NFR-07, NFR-08, NFR-10, NFR-11, NFR-12]
+
+    - tc_id: TC-NFR-09-b
+      test_function: test_nfr09_b
+      nfr: NFR-09
+      ac: AC-NFR-09.b
+      srs_section: "§4 NFR-09"
+      test_file: "03-development/tests/test_authenticity.py"
+      spec_ref: "NFR-09 zero-assertion rule"
+      layer: cross_cutting.quality
+      description: "ast-assertions reports zero_assert == 0 for the test tree"
+      cross_ref_frs: []
+      cross_ref_nfrs: []
+
+    - tc_id: TC-NFR-09-c
+      test_function: test_nfr09_c
+      nfr: NFR-09
+      ac: AC-NFR-09.c
+      srs_section: "§4 NFR-09"
+      test_file: "03-development/tests/test_authenticity.py"
+      spec_ref: "NFR-09 anti-fabrication clause"
+      layer: cross_cutting.quality
+      description: "No test excluded via --ignore / -k / --deselect / collect_ignore to reach the numbers above"
+      cross_ref_frs: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08]
+      cross_ref_nfrs: [NFR-01, NFR-02, NFR-03, NFR-04, NFR-05, NFR-06, NFR-07, NFR-08, NFR-10, NFR-11, NFR-12]
+
+    # ─────────────────────────────────────────────────────────────────
+    # NFR-10: 整合覆蓋  (§4, 1 AC) — layer: cross_cutting.integration
+    # ─────────────────────────────────────────────────────────────────
+    - tc_id: TC-NFR-10-a
+      test_function: test_nfr10_a
+      nfr: NFR-10
+      ac: AC-NFR-10.a
+      srs_section: "§4 NFR-10 / §8"
+      test_file: "03-development/tests/integration/"
+      spec_ref: "SPEC §8 #3"
+      layer: cross_cutting.integration
+      description: "pytest 03-development/tests/integration --cov=03-development/src --cov-report=term TOTAL ≥ 80%; CLI/CliRunner-driven, not direct internal calls"
+      cross_ref_frs: [FR-01, FR-02, FR-03, FR-04, FR-05, FR-06, FR-07, FR-08]
+      cross_ref_nfrs: []
+
+    # ─────────────────────────────────────────────────────────────────
+    # NFR-11: 可讀性  (§4, 3 ACs) — layer: cross_cutting.quality
+    # ─────────────────────────────────────────────────────────────────
+    - tc_id: TC-NFR-11-a
+      test_function: test_nfr11_a
+      nfr: NFR-11
+      ac: AC-NFR-11.a
+      srs_section: "§4 NFR-11"
+      test_file: "03-development/tests/test_readability.py"
+      spec_ref: "NFR-11 MI bound"
+      layer: cross_cutting.quality
+      description: "readability-v2 measures project MI ≥ 80"
+      cross_ref_frs: []
+      cross_ref_nfrs: []
+
+    - tc_id: TC-NFR-11-b
+      test_function: test_nfr11_b
+      nfr: NFR-11
+      ac: AC-NFR-11.b
+      srs_section: "§4 NFR-11"
+      test_file: "03-development/tests/test_readability.py"
+      spec_ref: "NFR-11 CC bound"
+      layer: cross_cutting.quality
+      description: "Per-function CC ≤ 10 across the project"
+      cross_ref_frs: []
+      cross_ref_nfrs: []
+
+    - tc_id: TC-NFR-11-c
+      test_function: test_nfr11_c
+      nfr: NFR-11
+      ac: AC-NFR-11.c
+      srs_section: "§4 NFR-11"
+      test_file: "03-development/tests/test_readability.py"
+      spec_ref: "NFR-11 size bounds"
+      layer: cross_cutting.quality
+      description: "No file exceeds 400 lines; no directory exceeds 15 files"
+      cross_ref_frs: []
+      cross_ref_nfrs: []
+
+    # ─────────────────────────────────────────────────────────────────
+    # NFR-12: 系統驗證目標  (§4, 1 AC) — layer: cross_cutting.verify_system
+    # ─────────────────────────────────────────────────────────────────
+    - tc_id: TC-NFR-12-a
+      test_function: test_nfr12_a
+      nfr: NFR-12
+      ac: AC-NFR-12.a
+      srs_section: "§4 NFR-12 / §8"
+      test_file: "03-development/tests/test_verify_system.py"
+      spec_ref: "SPEC §8 #21"
+      layer: cross_cutting.verify_system
+      description: "make verify-system exits 0 and stdout contains 'verify-system: PASS'"
+      cross_ref_frs: [FR-01, FR-02, FR-05, FR-06, FR-08]
+      cross_ref_nfrs: [NFR-09]
+
+  # ─────────────────────────────────────────────────────────────────
+  # Coverage summaries — arithmetic MUST equal enumerated tests: count
+  # ─────────────────────────────────────────────────────────────────
+  by_fr:
+    FR-01:
+      tc_count: 4
+      ac_ids: [AC-FR-01.a, AC-FR-01.b, AC-FR-01.c, AC-FR-01.d]
+    FR-02:
+      tc_count: 5
+      ac_ids: [AC-FR-02.a, AC-FR-02.b, AC-FR-02.c, AC-FR-02.d, AC-FR-02.e]
+    FR-03:
+      tc_count: 4
+      ac_ids: [AC-FR-03.a, AC-FR-03.b, AC-FR-03.c, AC-FR-03.d]
+    FR-04:
+      tc_count: 4
+      ac_ids: [AC-FR-04.a, AC-FR-04.b, AC-FR-04.c, AC-FR-04.d]
+    FR-05:
+      tc_count: 4
+      ac_ids: [AC-FR-05.a, AC-FR-05.b, AC-FR-05.c, AC-FR-05.d]
+    FR-06:
+      tc_count: 4
+      ac_ids: [AC-FR-06.a, AC-FR-06.b, AC-FR-06.c, AC-FR-06.d]
+    FR-07:
+      tc_count: 5
+      ac_ids: [AC-FR-07.a, AC-FR-07.b, AC-FR-07.c, AC-FR-07.d, AC-FR-07.e]
+    FR-08:
+      tc_count: 4
+      ac_ids: [AC-FR-08.a, AC-FR-08.b, AC-FR-08.c, AC-FR-08.d]
+    NFR-01:
+      tc_count: 2
+      ac_ids: [AC-NFR-01.a, AC-NFR-01.b]
+    NFR-02:
+      tc_count: 4
+      ac_ids: [AC-NFR-02.a, AC-NFR-02.b, AC-NFR-02.c, AC-NFR-02.d]
+    NFR-03:
+      tc_count: 4
+      ac_ids: [AC-NFR-03.a, AC-NFR-03.b, AC-NFR-03.c, AC-NFR-03.d]
+    NFR-04:
+      tc_count: 2
+      ac_ids: [AC-NFR-04.a, AC-NFR-04.b]
+    NFR-05:
+      tc_count: 1
+      ac_ids: [AC-NFR-05.a]
+    NFR-06:
+      tc_count: 3
+      ac_ids: [AC-NFR-06.a, AC-NFR-06.b, AC-NFR-06.c]
+    NFR-07:
+      tc_count: 3
+      ac_ids: [AC-NFR-07.a, AC-NFR-07.b, AC-NFR-07.c]
+    NFR-08:
+      tc_count: 2
+      ac_ids: [AC-NFR-08.a, AC-NFR-08.b]
+    NFR-09:
+      tc_count: 3
+      ac_ids: [AC-NFR-09.a, AC-NFR-09.b, AC-NFR-09.c]
+    NFR-10:
+      tc_count: 1
+      ac_ids: [AC-NFR-10.a]
+    NFR-11:
+      tc_count: 3
+      ac_ids: [AC-NFR-11.a, AC-NFR-11.b, AC-NFR-11.c]
+    NFR-12:
+      tc_count: 1
+      ac_ids: [AC-NFR-12.a]
+
+  by_layer:
+    service:
+      count: 26
+      frs: [FR-01, FR-02, FR-03, FR-04, FR-06, FR-07]
+    cli:
+      count: 4
+      frs: [FR-05]
+    observability:
+      count: 6
+      frs: [FR-08]
+      nfrs: [NFR-04]
+    storage:
+      count: 4
+      nfrs: [NFR-03]
+    cross_cutting.security:
+      count: 4
+      nfrs: [NFR-02]
+    cross_cutting.performance:
+      count: 2
+      nfrs: [NFR-01]
+    cross_cutting.architecture:
+      count: 3
+      nfrs: [NFR-06]
+    cross_cutting.documentation:
+      count: 1
+      nfrs: [NFR-05]
+    cross_cutting.license:
+      count: 3
+      nfrs: [NFR-07]
+    cross_cutting.mutation:
+      count: 2
+      nfrs: [NFR-08]
+    cross_cutting.quality:
+      count: 6
+      nfrs: [NFR-09, NFR-11]
+    cross_cutting.integration:
+      count: 1
+      nfrs: [NFR-10]
+    cross_cutting.verify_system:
+      count: 1
+      nfrs: [NFR-12]
+
+  arithmetic_check:
+    by_fr_total: 63
+    by_layer_total: 63
+    enumerated_tests_block_count: 63
+    invariants:
+      - "by_fr_total == total_test_cases"
+      - "by_layer_total == total_test_cases"
+      - "enumerated_tests_block_count == total_test_cases"
