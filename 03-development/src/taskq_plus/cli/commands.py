@@ -7,33 +7,25 @@ Citations: SPEC.md §3 FR-01 (submit command, validation, audit emit).
 from __future__ import annotations
 
 import argparse
-import datetime as dt
 import json
 import sys
 from pathlib import Path
-from typing import List, Optional, Sequence
+from typing import Optional, Sequence
 
 from pydantic import ValidationError
 
 from taskq_plus.models.task import TaskSubmission, generate_task_id
 from taskq_plus.storage.task_store import (
+    _now_iso,
     append_task,
     find_by_id,
     find_by_name,
-    load_tasks,
 )
 
 
 EXIT_OK = 0
 EXIT_VALIDATION_ERROR = 2
 EXIT_NOT_FOUND = 3
-
-UTC = dt.timezone.utc
-
-
-def _now_iso() -> str:
-    """UTC ISO-8601 timestamp with 'Z' suffix."""
-    return dt.datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _emit_audit(event: str, payload: dict, taskq_home: Path) -> None:

@@ -11,11 +11,14 @@ import json
 import os
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, FrozenSet, List, Optional
 
 
 TASKS_FILENAME = "tasks.json"
 UTC = dt.timezone.utc
+
+# Task statuses that occupy a name slot — finished tasks release theirs.
+ACTIVE_STATUSES: FrozenSet[str] = frozenset({"pending", "running"})
 
 
 def _home() -> Path:
@@ -75,11 +78,11 @@ def save_tasks(tasks: List[Dict[str, Any]]) -> None:
 
 
 def find_by_name(name: Optional[str]) -> Optional[Dict[str, Any]]:
-    """Return the first task with a matching name (case-sensitive)."""
+    """Return the first active task with a matching name (case-sensitive)."""
     if name is None:
         return None
     for t in load_tasks():
-        if t.get("name") == name and t.get("status") in ("pending", "running"):
+        if t.get("name") == name and t.get("status") in ACTIVE_STATUSES:
             return t
     return None
 
