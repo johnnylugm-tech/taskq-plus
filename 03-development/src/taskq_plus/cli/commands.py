@@ -1,10 +1,11 @@
 """CLI command implementations.
 
-[FR-01] [FR-02] [FR-03]
+[FR-01] [FR-02] [FR-03] [FR-04]
 Citations:
   - SPEC.md §3 FR-01 (submit command, validation, audit emit).
   - SPEC.md §3 FR-02 (run / run --all dispatch).
   - SPEC.md#L113 (FR-03: run rejected with exit 3 while the breaker is OPEN).
+  - SPEC.md §3 FR-04 (run --cached: TTL-keyed replay within TASKQ_CACHE_TTL).
 """
 
 from __future__ import annotations
@@ -29,8 +30,10 @@ from taskq_plus.storage.task_store import (
 
 
 EXIT_OK = 0
+EXIT_FAILED = 1
 EXIT_VALIDATION_ERROR = 2
 EXIT_NOT_FOUND = 3
+EXIT_TIMEOUT = 4
 
 
 def _emit_audit(event: str, payload: dict, taskq_home: Path) -> None:
@@ -77,8 +80,10 @@ def _build_submit_parser() -> argparse.ArgumentParser:
 def _build_run_parser() -> argparse.ArgumentParser:
     """Build the `run` subcommand parser.
 
-    [FR-02]
-    Citations: SPEC.md §3 FR-02 (run <id> | run --all).
+    [FR-02] [FR-04]
+    Citations:
+      - SPEC.md §3 FR-02 (run <id> | run --all).
+      - SPEC.md §3 FR-04 (run <id> --cached: replay within TASKQ_CACHE_TTL).
     """
     parser = argparse.ArgumentParser(prog="taskq_plus run")
     parser.add_argument(
@@ -87,18 +92,24 @@ def _build_run_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--all", action="store_true", dest="run_all", help="Execute every pending task."
     )
+    parser.add_argument(
+        "--cached", action="store_true", dest="use_cache",
+        help="Replay the cached result when TASKQ_CACHE_TTL has not elapsed.",
+    )
     return parser
 
 
 def _run(argv: Sequence[str]) -> int:
     """Execute the `run` subcommand.
 
-    [FR-02] [FR-03]
+    [FR-02] [FR-03] [FR-04]
     Citations:
       - SPEC.md §3 FR-02 (single-task run, batch --all via ThreadPoolExecutor).
       - SPEC.md §3 FR-02 (timeout → exit 4; exit 0 → exit 0; non-zero → exit 1).
       - SPEC.md#L108 (single-task run retries with exponential backoff).
       - SPEC.md#L113 (breaker OPEN → exit 3 + stderr `breaker open`).
+      - SPEC.md §3 FR-04 (run <id> --cached: cache-aware replay; otherwise
+        the executor's `done` result is still written back to cache.json).
     """
     parser = _build_run_parser()
     args = parser.parse_args(list(argv))
@@ -112,7 +123,27 @@ def _run(argv: Sequence[str]) -> int:
             file=sys.stderr,
         )
         return EXIT_VALIDATION_ERROR
-    return exec_run_with_retry(args.task_id)
+
+    # Cache-aware single-task run: --cached enables HIT replay; without
+    # --cached the executor still runs and a `done` result is written back
+    # into cache.json so subsequent --cached runs can replay it.
+    from taskq_plus.service.cache import execute_with_cache
+
+    result = execute_with_cache(args.task_id, use_cache=bool(args.use_cache))
+    if result is None:
+        return EXIT_FAILED
+    # Propagate the runner's exit code verbatim so FR-02 (timeout=4) and
+    # FR-03 (breaker open=3) outcomes flow through unchanged; a HIT path
+    # carries exit_code=0 from the cached payload.
+    code = result.get("exit_code")
+    if isinstance(code, int):
+        return code
+    status = result.get("status")
+    if status == "done":
+        return EXIT_OK
+    if status == "timeout":
+        return EXIT_TIMEOUT
+    return EXIT_FAILED
 
 
 def _submit(
@@ -183,8 +214,8 @@ def _submit(
 def dispatch(argv: Sequence[str], taskq_home: Optional[Path] = None) -> int:
     """Dispatch argv to the correct subcommand.
 
-    [FR-01] [FR-02]
-    Citations: SPEC.md §3 FR-01, §3 FR-02.
+    [FR-01] [FR-02] [FR-04]
+    Citations: SPEC.md §3 FR-01, §3 FR-02, §3 FR-04.
     """
     if not argv:
         _build_parser().print_help()

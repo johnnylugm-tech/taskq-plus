@@ -1,6 +1,6 @@
 """Task executor — subprocess state machine + ThreadPoolExecutor batch.
 
-[FR-02] [FR-03]
+[FR-02] [FR-03] [FR-04]
 Citations:
   - SPEC.md §3 FR-02 (single-task run, --all batch, subprocess.run args).
   - SPEC.md §3 FR-02 (state machine: pending → running → done|failed|timeout|blocked).
@@ -12,6 +12,8 @@ Citations:
   - SPEC.md §8 #15 (subprocess invoked without the shell meta-flag).
   - SPEC.md#L108 (FR-03 retry: `TASKQ_BACKOFF_BASE × 2^n`, injectable sleep).
   - SPEC.md#L113 (FR-03 breaker OPEN → exit 3 + stderr `breaker open`).
+  - SPEC.md §3 FR-04 (cache miss / expired → executor's `done` result feeds
+    the cache write-back in `taskq_plus.service.cache`).
 """
 
 from __future__ import annotations
