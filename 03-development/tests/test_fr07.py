@@ -679,3 +679,93 @@ def test_fr07_e():  # NFR-02
         "NFR-02 forbids eval(/exec( anywhere under "
         f"{src_dir_relpath}; found {len(hits)} hit(s):\n" + "\n".join(hits)
     )
+
+
+# ===========================================================================
+# Coverage-targeting tests — drive the branches in `service.plugins` that the
+# spec-named tests above do NOT reach. Same behaviour contract from SPEC §3
+# FR-07; these are pure unit-level coverage tests for the smaller branches.
+# ===========================================================================
+
+def test_fr07_load_plugins_settings_string_and_iterable(
+        taskq_home, install_plugin, plugin_dir,
+):
+    """`load_plugins` accepts BOTH a comma-string and a list as `settings`.
+
+    Covers the `elif isinstance(settings, str)` / `else` branches of
+    `_coerce_names` (plugins.py lines 108-111). Same regex gate, same import
+    semantics as the env-driven path — only the input shape differs.
+    """
+    a = install_plugin("fr07_string_plugin_a", GOOD_PLUGIN_SRC)
+    b = install_plugin("fr07_string_plugin_b", GOOD_PLUGIN_SRC)
+
+    # String form — exercises plugins.py lines 108-109.
+    loaded_str = load_plugins(f"{a},{b}")
+    assert sorted(p.name for p in loaded_str) == [a, b]
+
+    c = install_plugin("fr07_iter_plugin", GOOD_PLUGIN_SRC)
+    # Iterable (list) form — exercises plugins.py lines 110-111.
+    loaded_list = load_plugins([c])
+    assert [p.name for p in loaded_list] == [c]
+
+
+def test_fr07_load_plugins_import_failure_raises_pluginloaderror(
+        taskq_home,
+):
+    """A regex-valid name that fails to import must raise `PluginLoadError`.
+
+    Covers the `except Exception` branch of `load_plugins` (plugins.py lines
+    141-142). The allowlist gate (PLUGIN_NAME_RE) passes for the synthetic
+    name `definitely_not_a_real_plugin_xyz123`, so the path goes straight
+    to `importlib.import_module(name)` — which raises `ModuleNotFoundError`,
+    caught and re-raised as `PluginLoadError` (the SPEC §7 exit-6 contract).
+    """
+    synthetic = "definitely_not_a_real_plugin_xyz123"
+    monkeypatch_ok = True
+    try:
+        importlib.import_module(synthetic)
+    except Exception:
+        monkeypatch_ok = False
+    assert not monkeypatch_ok, (
+        f"sanity: {synthetic!r} must NOT be importable in this environment"
+    )
+
+    with pytest.raises(PluginLoadError) as excinfo:
+        load_plugins(synthetic)
+    assert getattr(excinfo.value, "exit_code", 6) == 6, (
+        "PluginLoadError must carry exit code 6 (SPEC §7)"
+    )
+
+
+def test_fr07_dispatch_skips_plugin_without_requested_hook(
+        taskq_home, install_plugin, plugin_log,
+):
+    """`dispatch` must SKIP plugins that do not register the hook.
+
+    Covers plugins.py line 196 (`if hook not in plugin.hooks: continue`).
+    The plugin only registers `pre_run`; `dispatch("post_run", ...)` must
+    skip it cleanly — no invocation, no failure, no audit event.
+    """
+    only_pre_src = _LOG_HELPER + '''
+
+def pre_run(task):
+    _log("pre_run")
+'''
+    module_name = install_plugin("fr07_hook_skip_plugin", only_pre_src)
+
+    loaded = load_plugins()
+    assert [p.name for p in loaded] == [module_name]
+    assert loaded[0].hooks == ["pre_run"], (
+        f"the plugin must register only pre_run (no post_run); "
+        f"got {loaded[0].hooks!r}"
+    )
+
+    result = dispatch("post_run", loaded, {"id": "abcdef12"})
+    assert not result.failures, (
+        f"a plugin without post_run must not report a failure, got "
+        f"{result.failures!r}"
+    )
+    assert _hook_calls(plugin_log) == [], (
+        "a plugin without the requested hook must NOT be invoked at all; "
+        f"got hook_calls={_hook_calls(plugin_log)!r}"
+    )
