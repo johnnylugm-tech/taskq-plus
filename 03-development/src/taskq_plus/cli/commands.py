@@ -20,7 +20,6 @@ from pydantic import ValidationError
 
 from taskq_plus.models.task import TaskSubmission, generate_task_id
 from taskq_plus.service.executor import run_all as exec_run_all
-from taskq_plus.service.executor import run_with_retry as exec_run_with_retry
 from taskq_plus.storage.task_store import (
     _now_iso,
     append_task,

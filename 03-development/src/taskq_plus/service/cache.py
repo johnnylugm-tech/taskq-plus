@@ -29,6 +29,11 @@ from taskq_plus.storage.cache_store import (
 )
 from taskq_plus.storage.task_store import find_by_id
 
+# `CACHE_FILENAME` and `cache_path` are owned by cache_store (the on-disk
+# contract) and re-exported here so callers can import the canonical filename
+# and path resolver from a single module.
+__all__ = ["CACHE_FILENAME", "cache_path", "DEFAULT_CACHE_TTL_S"]
+
 
 # ---------------------------------------------------------------------------
 # Public constants
