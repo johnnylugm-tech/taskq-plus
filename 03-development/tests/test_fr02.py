@@ -21,6 +21,7 @@ or lazy imports to hide the missing module.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import subprocess
@@ -29,6 +30,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -46,8 +48,10 @@ if str(SRC) not in sys.path:
 # SAB-bound imports — executor triggers Collection Error in the RED state.
 # task_store exists and is used by the in-process tests below.
 from taskq_plus.storage.task_store import (  # noqa: E402
+    _atomic_write_json,
     append_task,
     find_by_id,
+    find_by_name,
     load_tasks,
     save_tasks,
 )
@@ -58,7 +62,15 @@ from taskq_plus.storage.task_store import (  # noqa: E402
 #   - execute_task(task_id: str) -> dict | None  # used by ThreadPoolExecutor
 # The top-level import below deliberately triggers ModuleNotFoundError in
 # RED so the entire file fails Collection. Do NOT wrap it in try/except.
-from taskq_plus.service.executor import run, run_all  # noqa: E402,F401
+from taskq_plus.service.executor import (  # noqa: E402,F401
+    DEFAULT_TIMEOUT_S,
+    _resolve_max_workers,
+    _resolve_timeout,
+    _topological_levels,
+    _truncate_tail,
+    run,
+    run_all,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -572,3 +584,281 @@ def test_fr02_d_subprocess(taskq_home):
     err_tail = rec.get("stderr_tail") or ""
     assert len(out_tail) <= 2000
     assert len(err_tail) <= 2000
+
+
+# ===========================================================================
+# Coverage-gap tests — pin branches that the FR-02 AC tests above do not hit.
+# These are NOT from TEST_SPEC.md rows; they are brought in ONLY to keep
+# test_coverage above the Gate 1 threshold (>= 80%). Every uncovered line
+# referenced here is reachable and is exercised by the body of its test.
+# ===========================================================================
+
+
+# ---- task_store.py -- lines 49-55 (atomic-write except branch) -----------
+def test_taskq_store_atomic_write_handles_serialization_error(taskq_home):
+    """Feeding non-JSON-serialisable data forces the except cleanup branch.
+
+    Covers task_store.py lines 49, 51, 52, 55 (the TypeError-raising path
+    inside the generic except, plus the successful unlink).
+    """
+    target = Path(taskq_home) / "x.json"
+    # frozenset is unserialisable by the stdlib json module → triggers TypeError
+    unserializable = {"k": frozenset({1, 2, 3})}
+    with pytest.raises(TypeError):
+        _atomic_write_json(target, unserializable)
+    # Cleanup happened — no leftover .tmp artefacts in the directory.
+    leftovers = sorted(Path(taskq_home).glob("x.*.tmp"))
+    assert leftovers == [], f"temp file leftover after failed write: {leftovers}"
+
+
+def test_taskq_store_atomic_write_swallows_unlink_failure(taskq_home):
+    """When os.unlink raises OSError, the inner OSError handler swallows it.
+
+    Covers task_store.py lines 53-54 (the inner `except OSError: pass`).
+    """
+    target = Path(taskq_home) / "x.json"
+    unserializable = {"k": frozenset({1, 2, 3})}
+    with patch(
+        "taskq_plus.storage.task_store.os.unlink",
+        side_effect=OSError("simulated cleanup failure"),
+    ):
+        with pytest.raises(TypeError):
+            _atomic_write_json(target, unserializable)
+
+
+# ---- task_store.py -- lines 66-67 (corrupted JSON) -----------------------
+def test_taskq_store_load_handles_corrupted_json(taskq_home):
+    """load_tasks() returns [] when tasks.json contains malformed JSON.
+
+    Covers task_store.py lines 66-67.
+    """
+    p = Path(taskq_home) / "tasks.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text("{ this is not valid JSON at all", encoding="utf-8")
+    assert load_tasks() == []
+
+
+# ---- task_store.py -- lines 70-72 (dict wrapper form) --------------------
+def test_taskq_store_load_unwraps_dict_envelope(taskq_home):
+    """load_tasks() accepts the {'tasks': [...]} envelope form.
+
+    Covers task_store.py lines 70-71.
+    """
+    p = Path(taskq_home) / "tasks.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(
+        json.dumps({"tasks": [{"id": "x1", "status": "pending"}]}),
+        encoding="utf-8",
+    )
+    result = load_tasks()
+    assert isinstance(result, list)
+    assert len(result) == 1
+    assert result[0]["id"] == "x1"
+
+
+def test_taskq_store_load_falls_back_to_empty_when_dict_lacks_tasks_key(
+    taskq_home,
+):
+    """A dict that does NOT have a 'tasks' list key returns [].
+
+    Covers task_store.py line 72 (the trailing fallback `return []`).
+    """
+    p = Path(taskq_home) / "tasks.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps({"unrelated": "key"}), encoding="utf-8")
+    assert load_tasks() == []
+
+
+def test_taskq_store_load_falls_back_when_tasks_value_is_not_list(taskq_home):
+    """A dict whose 'tasks' value is not a list returns [].
+
+    Covers task_store.py line 72 (the trailing fallback `return []`).
+    """
+    p = Path(taskq_home) / "tasks.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps({"tasks": "not-a-list"}), encoding="utf-8")
+    assert load_tasks() == []
+
+
+# ---- task_store.py -- lines 82-87 (find_by_name) -------------------------
+def test_taskq_store_find_by_name_none_returns_none(taskq_home):
+    """find_by_name(None) short-circuits without touching the store.
+
+    Covers task_store.py lines 82-83.
+    """
+    assert find_by_name(None) is None
+    # No file should have been created by the short-circuit.
+    assert not (Path(taskq_home) / "tasks.json").exists()
+
+
+def test_taskq_store_find_by_name_matches_active_task(taskq_home):
+    """find_by_name returns the first active task whose name matches.
+
+    Covers task_store.py lines 84-86.
+    """
+    p = Path(taskq_home) / "tasks.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(
+        json.dumps(
+            [
+                {"id": "t1", "name": "alpha", "status": "pending"},
+                {"id": "t2", "name": "beta", "status": "running"},
+                {"id": "t3", "name": "alpha", "status": "done"},  # not active
+            ]
+        ),
+        encoding="utf-8",
+    )
+    rec = find_by_name("alpha")
+    assert rec is not None
+    assert rec["id"] == "t1"
+
+
+def test_taskq_store_find_by_name_skips_inactive_match(taskq_home):
+    """find_by_name ignores done/failed tasks even when name matches.
+
+    Covers task_store.py lines 84, 87 (loop completes, returns None).
+    """
+    p = Path(taskq_home) / "tasks.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(
+        json.dumps(
+            [{"id": "t1", "name": "alpha", "status": "done"}]
+        ),
+        encoding="utf-8",
+    )
+    assert find_by_name("alpha") is None
+
+
+def test_taskq_store_find_by_name_no_match_returns_none(taskq_home):
+    """find_by_name returns None when nothing matches.
+
+    Covers task_store.py lines 84, 87.
+    """
+    p = Path(taskq_home) / "tasks.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(
+        json.dumps([{"id": "t1", "name": "alpha", "status": "pending"}]),
+        encoding="utf-8",
+    )
+    assert find_by_name("omega") is None
+
+
+# ---- task_store.py -- line 95 (find_by_id miss) --------------------------
+def test_taskq_store_find_by_id_missing_returns_none(taskq_home):
+    """find_by_id returns None when no record has the requested id.
+
+    Covers task_store.py line 95 (the post-loop `return None`).
+    """
+    p = Path(taskq_home) / "tasks.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(
+        json.dumps([{"id": "t1", "name": "alpha", "status": "pending"}]),
+        encoding="utf-8",
+    )
+    assert find_by_id("does-not-exist") is None
+
+
+# ---- executor.py -- lines 77-78 (env parse ValueError fallback) ----------
+def test_fr02_invalid_task_timeout_env_uses_default(taskq_home, monkeypatch):
+    """Unparseable TASKQ_TASK_TIMEOUT → DEFAULT_TIMEOUT_S.
+
+    Covers executor.py lines 77-78.
+    """
+    monkeypatch.setenv("TASKQ_TASK_TIMEOUT", "not-a-float")
+    assert _resolve_timeout() == DEFAULT_TIMEOUT_S
+
+
+def test_fr02_invalid_max_workers_env_uses_default(taskq_home, monkeypatch):
+    """Unparseable TASKQ_MAX_WORKERS → DEFAULT_MAX_WORKERS.
+
+    Covers executor.py lines 77-78 (exercised via the int path).
+    """
+    monkeypatch.setenv("TASKQ_MAX_WORKERS", "not-an-int")
+    from taskq_plus.service.executor import DEFAULT_MAX_WORKERS as D
+    assert _resolve_max_workers() == D
+
+
+def test_fr02_env_empty_string_uses_default(taskq_home, monkeypatch):
+    """Empty TASKQ_TASK_TIMEOUT → DEFAULT_TIMEOUT_S (the `not raw` short-circuit).
+
+    Covers executor.py line 73 (`if not raw: return default`).
+    """
+    monkeypatch.setenv("TASKQ_TASK_TIMEOUT", "")
+    assert _resolve_timeout() == DEFAULT_TIMEOUT_S
+
+
+# ---- executor.py -- line 99 (bytes branch in _truncate_tail) ------------
+def test_fr02_truncate_tail_handles_bytes_input(taskq_home):
+    """_truncate_tail decodes bytes via utf-8.
+
+    Covers executor.py line 99.
+    """
+    payload = ("A" * 2500).encode("utf-8")
+    out = _truncate_tail(payload)
+    assert isinstance(out, str)
+    assert len(out) == 2000
+    assert out == "A" * 2000
+
+
+# ---- executor.py -- lines 166-167 (cycle drain in _topological_levels) ----
+def test_fr02_topological_levels_handles_cycle(taskq_home):
+    """A cycle in the DAG drains into a single final level.
+
+    Covers executor.py lines 166-167 (the `levels.append(...)` + `break`).
+    """
+    tasks = [
+        {"id": "a", "depends_on": ["b"], "status": "pending"},
+        {"id": "b", "depends_on": ["a"], "status": "pending"},
+    ]
+    levels = _topological_levels(tasks)
+    # Both nodes must appear in some level (no node dropped).
+    seen: set[str] = set()
+    for lvl in levels:
+        seen.update(lvl)
+    assert seen == {"a", "b"}
+    # And the last level emits the remaining nodes (cycle drain).
+    flat = [tid for lvl in levels for tid in lvl]
+    assert flat[-2:] == ["a", "b"] or set(flat[-2:]) == {"a", "b"}
+
+
+# ---- executor.py -- line 211 (execute_task: missing task) ----------------
+def test_fr02_execute_task_missing_id_returns_none(taskq_home):
+    """execute_task('missing') returns None without touching the store.
+
+    Covers executor.py line 211.
+    """
+    from taskq_plus.service.executor import execute_task
+    result = execute_task("no-such-id")
+    assert result is None
+
+
+# ---- executor.py -- line 259 (run: missing task → EXIT_FAILED) -----------
+def test_fr02_run_missing_id_returns_failed(taskq_home):
+    """run('missing') returns EXIT_FAILED (=1) because execute_task → None.
+
+    Covers executor.py line 259.
+    """
+    assert run("no-such-id") == 1  # EXIT_FAILED
+
+
+# ---- executor.py -- line 284 (run_all: no pending tasks) -----------------
+def test_fr02_run_all_no_pending_returns_immediately(taskq_home):
+    """run_all() is a no-op when nothing is pending.
+
+    Covers executor.py line 284.
+    """
+    # Seed only done tasks via the store API.
+    p = Path(taskq_home) / "tasks.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(
+        json.dumps(
+            [{"id": "t1", "command": "true", "status": "done"}]
+        ),
+        encoding="utf-8",
+    )
+    # No exception, no side-effects.
+    run_all()
+    # And the store is unchanged.
+    recs = load_tasks()
+    assert len(recs) == 1
+    assert recs[0]["status"] == "done"
