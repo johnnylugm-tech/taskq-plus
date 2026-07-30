@@ -377,8 +377,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     ctx_obj: dict = {"json": as_json}
     try:
         result = cli.main(args=cleaned, standalone_mode=False, obj=ctx_obj)
-    except click.exceptions.Exit as exc:
-        return int(exc.exit_code or 0)
     except click.exceptions.UsageError as exc:
         _emit_error(str(exc))
         return EXIT_VALIDATION

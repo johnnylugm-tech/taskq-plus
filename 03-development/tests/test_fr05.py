@@ -802,6 +802,60 @@ class TestCoverageCliMainErrors:
             f"plugins(bad-allowlist) exit={code} stderr={err!r}"
         )
 
+    def test_submit_validation_error_returns_exit_2(self, taskq_home):
+        """Lines 202-204: SubmitValidationError from submit_cmd → exit 2."""
+        from taskq_plus.cli import commands as cmds
+
+        original = cmds.submit_cmd
+
+        def _raise(*a, **kw):
+            raise cmds.SubmitValidationError("synthetic submit validation")
+
+        cmds.submit_cmd = _raise
+        try:
+            code, out, err = _main_capture(["submit", "echo x"])
+            assert code == EXIT_VALIDATION, (
+                f"submit(validation) exit={code} stderr={err!r}"
+            )
+        finally:
+            cmds.submit_cmd = original
+
+    def test_plugins_validation_error_returns_exit_2(self, taskq_home):
+        """Lines 306-308: PluginValidationError from plugins_cmd → exit 2."""
+        from taskq_plus.cli import commands as cmds
+
+        original = cmds.plugins_cmd
+
+        def _raise(*a, **kw):
+            raise cmds.PluginValidationError("synthetic plugin validation")
+
+        cmds.plugins_cmd = _raise
+        try:
+            code, out, err = _main_capture(["plugins", "list"])
+            assert code == EXIT_VALIDATION, (
+                f"plugins(validation) exit={code} stderr={err!r}"
+            )
+        finally:
+            cmds.plugins_cmd = original
+
+    def test_export_validation_error_returns_exit_2(self, taskq_home):
+        """Lines 332-334: ExportValidationError from export_cmd → exit 2."""
+        from taskq_plus.cli import commands as cmds
+
+        original = cmds.export_cmd
+
+        def _raise(*a, **kw):
+            raise cmds.ExportValidationError("synthetic export validation")
+
+        cmds.export_cmd = _raise
+        try:
+            code, out, err = _main_capture(["export", "--format", "json"])
+            assert code == EXIT_VALIDATION, (
+                f"export(validation) exit={code} stderr={err!r}"
+            )
+        finally:
+            cmds.export_cmd = original
+
 
 class TestCoverageCliMainEntry:
     """Cover `cli/main.py` main() entry-point paths."""
@@ -871,6 +925,36 @@ class TestCoverageCliMainEntry:
             assert code == 42
         finally:
             cmds.submit_cmd = original
+
+    def test_main_click_exit_nonzero_returns_exit_code(self, taskq_home, monkeypatch):
+        """Line 381: click.exceptions.Exit(exit_code=N!=0) → return int(N)."""
+        from taskq_plus.cli import commands as cmds
+        import click as _click
+
+        def _raise(*a, **kw):
+            raise _click.exceptions.Exit(7)
+
+        original = cmds.submit_cmd
+        cmds.submit_cmd = _raise
+        try:
+            code, _out, _err = _main_capture(["submit", "echo hi"])
+            assert code == 7, f"main(click-Exit-7) exit={code}"
+        finally:
+            cmds.submit_cmd = original
+
+    def test_main_handler_returns_none_collapses_to_exit_ok(self, taskq_home, monkeypatch):
+        """Line 397: when click returns None (subcommand handler returns None
+        instead of an int), main() collapses to EXIT_OK."""
+        # Patch the click callback itself (not the wrapped commands.submit_cmd)
+        # so the click group returns None from cli.main() and the
+        # `if result is None` branch in main() is exercised.
+        original_callback = cli_group.commands["submit"].callback
+        cli_group.commands["submit"].callback = lambda *a, **kw: None
+        try:
+            code, _out, _err = _main_capture(["submit", "echo hi"])
+            assert code == EXIT_OK, f"main(handler-returns-None) exit={code}"
+        finally:
+            cli_group.commands["submit"].callback = original_callback
 
 
 def _main_capture_with_none_argv():
@@ -1006,10 +1090,76 @@ class TestCoverageCommandsHandlers:
         with pytest.raises(_cmd_mod.PluginLoadError):
             _cmd_mod.plugins_cmd("list")
 
+    def test_plugins_cmd_valid_names_returns_dict(self, monkeypatch):
+        """Lines 396-398: valid allowlist names → plugins list with empty hooks."""
+        monkeypatch.setenv("TASKQ_PLUGINS", "alpha_plugin,beta_plugin")
+        out = _cmd_mod.plugins_cmd("list")
+        assert out["count"] == 2
+        assert {p["name"] for p in out["plugins"]} == {"alpha_plugin", "beta_plugin"}
+        assert all(p["hooks"] == [] for p in out["plugins"])
+
+    def test_plugins_cmd_skips_empty_pieces(self, monkeypatch):
+        """Lines 390-391: empty / whitespace-only pieces are skipped, not rejected."""
+        monkeypatch.setenv("TASKQ_PLUGINS", "alpha_plugin,, ,beta_plugin")
+        out = _cmd_mod.plugins_cmd("list")
+        assert out["count"] == 2
+
     def test_export_cmd_unsupported_format_raises(self):
         """Line 414: export_cmd("xml") → ExportValidationError."""
         with pytest.raises(_cmd_mod.ExportValidationError):
             _cmd_mod.export_cmd("xml")
+
+    def test_run_cmd_status_done_returns_exit_ok(self, taskq_home, monkeypatch):
+        """Lines 311-313: run_cmd when result has status='done' and no int exit_code
+        → returns dict with exit_code=0."""
+        from taskq_plus.service import cache as cache_mod
+
+        task_id = _submit_task("echo run-status-done")
+        original = cache_mod.execute_with_cache
+        cache_mod.execute_with_cache = lambda *a, **kw: {"status": "done", "cached": False}
+        try:
+            out = _cmd_mod.run_cmd(task_id=task_id)
+            assert out["exit_code"] == _cmd_mod.EXIT_OK
+        finally:
+            cache_mod.execute_with_cache = original
+
+    def test_run_cmd_status_timeout_returns_exit_timeout(self, taskq_home, monkeypatch):
+        """Lines 314-315: run_cmd when result has status='timeout' → exit_code=4."""
+        from taskq_plus.service import cache as cache_mod
+
+        task_id = _submit_task("echo run-status-timeout")
+        original = cache_mod.execute_with_cache
+        cache_mod.execute_with_cache = lambda *a, **kw: {"status": "timeout", "cached": False}
+        try:
+            out = _cmd_mod.run_cmd(task_id=task_id)
+            assert out["exit_code"] == _cmd_mod.EXIT_TIMEOUT
+        finally:
+            cache_mod.execute_with_cache = original
+
+    def test_run_cmd_status_other_returns_exit_failed(self, taskq_home, monkeypatch):
+        """Line 316: run_cmd when result has neither int exit_code nor 'done'/'timeout'
+        status → exit_code=1 (EXIT_FAILED)."""
+        from taskq_plus.service import cache as cache_mod
+
+        task_id = _submit_task("echo run-status-failed")
+        original = cache_mod.execute_with_cache
+        cache_mod.execute_with_cache = lambda *a, **kw: {"status": "weird", "cached": False}
+        try:
+            out = _cmd_mod.run_cmd(task_id=task_id)
+            assert out["exit_code"] == _cmd_mod.EXIT_FAILED
+        finally:
+            cache_mod.execute_with_cache = original
+
+    def test_compute_depth_shared_ancestor_triggers_cache_hit(self, taskq_home):
+        """Line 139: when two pending tasks share an ancestor, the recursive
+        `depth()` reuses the memoized entry — covering the cache-hit branch."""
+        root_id = _submit_task("echo shared-root")
+        child_a = _submit_task("echo child-a", extra=["--after", root_id])
+        child_b = _submit_task("echo child-b", extra=["--after", root_id])
+        # Both children depend on `root_id`; the second call to `depth(root_id)`
+        # inside `_compute_depth([child_a, child_b])` must hit the memo.
+        depth = _cmd_mod._compute_depth([child_a, child_b])
+        assert depth == 2
 
     def test_clear_cmd_handles_oserror(self, taskq_home, monkeypatch):
         """Lines 470-472: clear_cmd continues when unlink raises OSError."""
@@ -1086,6 +1236,47 @@ class TestCoverageCommandsLegacy:
         cache_mod.execute_with_cache = lambda *a, **kw: None
         try:
             code = _cmd_mod._run(["abcdef12"])
+            assert code == _cmd_mod.EXIT_FAILED
+        finally:
+            cache_mod.execute_with_cache = original
+
+    def test_run_legacy_status_done_returns_ok(self, taskq_home, monkeypatch):
+        """Lines 572-573: legacy _run when result has status='done' and no int exit_code
+        → EXIT_OK."""
+        from taskq_plus.service import cache as cache_mod
+
+        task_id = _submit_task("echo legacy-status-done")
+        original = cache_mod.execute_with_cache
+        cache_mod.execute_with_cache = lambda *a, **kw: {"status": "done", "cached": False}
+        try:
+            code = _cmd_mod._run([task_id])
+            assert code == _cmd_mod.EXIT_OK
+        finally:
+            cache_mod.execute_with_cache = original
+
+    def test_run_legacy_status_timeout_returns_timeout(self, taskq_home, monkeypatch):
+        """Lines 574-575: legacy _run when result has status='timeout' → EXIT_TIMEOUT."""
+        from taskq_plus.service import cache as cache_mod
+
+        task_id = _submit_task("echo legacy-status-timeout")
+        original = cache_mod.execute_with_cache
+        cache_mod.execute_with_cache = lambda *a, **kw: {"status": "timeout", "cached": False}
+        try:
+            code = _cmd_mod._run([task_id])
+            assert code == _cmd_mod.EXIT_TIMEOUT
+        finally:
+            cache_mod.execute_with_cache = original
+
+    def test_run_legacy_unknown_status_returns_failed(self, taskq_home, monkeypatch):
+        """Line 576: legacy _run when result has neither int exit_code nor
+        'done'/'timeout' status → EXIT_FAILED."""
+        from taskq_plus.service import cache as cache_mod
+
+        task_id = _submit_task("echo legacy-status-failed")
+        original = cache_mod.execute_with_cache
+        cache_mod.execute_with_cache = lambda *a, **kw: {"status": "weird", "cached": False}
+        try:
+            code = _cmd_mod._run([task_id])
             assert code == _cmd_mod.EXIT_FAILED
         finally:
             cache_mod.execute_with_cache = original
