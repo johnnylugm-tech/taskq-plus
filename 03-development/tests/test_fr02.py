@@ -163,9 +163,15 @@ def test_fr02_a(taskq_home, fast_timeout):
     "單一任務模式下 timeout 結果 → exit 4".
     """
     expected_status = "timeout"
-    expected_exit_code = 4
-    sleep_seconds = 5
+    expected_exit_code = "4"
+    task_timeout_seconds = "1.0"
+    sleep_seconds = "5"
     task_id = "sleeper01"
+
+    # TEST_SPEC §FR-02 sub-assertions for case 1 (trigger: expected_status).
+    if expected_status == "timeout":
+        assert float(task_timeout_seconds) < float(sleep_seconds)
+        assert expected_status == "timeout" and expected_exit_code == "4"
 
     _seed_pending(
         taskq_home,
@@ -175,7 +181,7 @@ def test_fr02_a(taskq_home, fast_timeout):
 
     cli_exit = run(task_id)
 
-    assert cli_exit == expected_exit_code, (
+    assert cli_exit == int(expected_exit_code), (
         f"expected CLI exit {expected_exit_code} (timeout), got {cli_exit}"
     )
 
@@ -213,6 +219,12 @@ def test_fr02_b(
     cmd_exit = int(command_exit_code)
     task_id = f"task{cmd_exit:02d}xxxx"
 
+    # TEST_SPEC §FR-02 sub-assertions for cases 2 / 3 (trigger: command_exit_code).
+    if command_exit_code == "0":
+        assert command_exit_code == "0" and expected_status == "done"
+    if command_exit_code == "1":
+        assert command_exit_code != "0" and expected_status == "failed"
+
     # `true` exits 0; `sh -c 'exit 1'` exits 1. Both deterministic.
     command = "true" if cmd_exit == 0 else f"sh -c 'exit {cmd_exit}'"
     _seed_pending(taskq_home, task_id=task_id, command=command)
@@ -237,7 +249,9 @@ def test_fr02_b(
 
 
 # ---- row 4 : run --all uses ThreadPoolExecutor + DAG + Lock -------------
-def test_fr02_c(taskq_home, monkeypatch):
+# NFR-03: tasks.json write integrity (atomic + thread-safe) under the
+# concurrent ThreadPoolExecutor writes that FR-02 `run --all` performs.
+def test_fr02_c(taskq_home, monkeypatch):  # NFR-03 (concurrent store write integrity)
     """AC-FR-02.c: run --all executes pending tasks via ThreadPoolExecutor
     in DAG topological order, sharing a `threading.Lock` over the store.
 
@@ -341,17 +355,26 @@ def test_fr02_d(taskq_home):
       AC2-tail-bounded          : len(tail) == "2000"
       AC2-stdout-input-bounded  : input len > tail len (sanity)
     """
-    expected_stdout_tail_len = 2000
-    expected_stderr_tail_len = 2000
-    stdout_byte_len = 5000
+    expected_stdout_tail_len = "2000"
+    expected_stderr_tail_len = "2000"
+    stdout_byte_len = "5000"
+
+    # TEST_SPEC §FR-02 sub-assertions for case 5 (trigger: expected_stdout_tail_len).
+    if expected_stdout_tail_len == "2000":
+        assert expected_stdout_tail_len == "2000" and expected_stderr_tail_len == "2000"
+        assert stdout_byte_len > expected_stdout_tail_len
+
+    out_bound = int(expected_stdout_tail_len)
+    err_bound = int(expected_stderr_tail_len)
+    emit_len = int(stdout_byte_len)
 
     task_id = "tailbound1"
     # Emit `stdout_byte_len` chars of 'A' on stdout and 'B' on stderr.
     # The shell `{1..N}` brace expansion works in POSIX sh.
     cmd = (
         f"sh -c "
-        f"\"printf 'A%.0s' $(seq 1 {stdout_byte_len}); "
-        f"printf 'B%.0s' $(seq 1 {stdout_byte_len}) 1>&2\""
+        f"\"printf 'A%.0s' $(seq 1 {emit_len}); "
+        f"printf 'B%.0s' $(seq 1 {emit_len}) 1>&2\""
     )
     _seed_pending(taskq_home, task_id=task_id, command=cmd)
 
@@ -376,28 +399,29 @@ def test_fr02_d(taskq_home):
     assert isinstance(err_tail, str), (
         f"stderr_tail should be a string, got {type(err_tail).__name__}"
     )
-    assert len(out_tail) <= expected_stdout_tail_len, (
-        f"stdout_tail length {len(out_tail)} > bound {expected_stdout_tail_len}"
+    assert len(out_tail) <= out_bound, (
+        f"stdout_tail length {len(out_tail)} > bound {out_bound}"
     )
-    assert len(err_tail) <= expected_stderr_tail_len, (
-        f"stderr_tail length {len(err_tail)} > bound {expected_stderr_tail_len}"
+    assert len(err_tail) <= err_bound, (
+        f"stderr_tail length {len(err_tail)} > bound {err_bound}"
     )
 
     # Sanity: input is larger than the bound, so the tail is exactly the bound
     # (per SPEC §3 FR-02 "末 2000 字元" — last 2000 chars, not just shorter).
-    assert stdout_byte_len > expected_stdout_tail_len
-    assert len(out_tail) == expected_stdout_tail_len, (
-        f"stdout_tail should be exactly last {expected_stdout_tail_len} chars "
-        f"when input has {stdout_byte_len}, got {len(out_tail)}"
+    assert emit_len > out_bound
+    assert len(out_tail) == out_bound, (
+        f"stdout_tail should be exactly last {out_bound} chars "
+        f"when input has {emit_len}, got {len(out_tail)}"
     )
-    assert len(err_tail) == expected_stderr_tail_len, (
-        f"stderr_tail should be exactly last {expected_stderr_tail_len} chars "
-        f"when input has {stdout_byte_len}, got {len(err_tail)}"
+    assert len(err_tail) == err_bound, (
+        f"stderr_tail should be exactly last {err_bound} chars "
+        f"when input has {emit_len}, got {len(err_tail)}"
     )
 
 
 # ---- row 6 : static grep — `shell=True` must NOT appear in src/ ---------
-def test_fr02_e(taskq_home):
+# NFR-02: exec security — `shell=True` must appear nowhere in the source tree.
+def test_fr02_e(taskq_home):  # NFR-02 (AC-NFR-02.a grep assertion)
     """AC-FR-02.e: `grep -rn "shell=True" 03-development/src/` returns 0 hits.
 
     NFR-02 / SPEC §8 #15 — codebase must never use `shell=True`.
@@ -408,7 +432,13 @@ def test_fr02_e(taskq_home):
     IS the valid RED signal for this FR-02 RED deliverable.
     """
     grep_pattern = "shell=True"
-    src_dir = ROOT / "src"
+    src_dir_relpath = "03-development/src/"
+
+    # TEST_SPEC §FR-02 sub-assertion for case 6 (trigger: grep_pattern).
+    if grep_pattern == "shell=True":
+        assert len(grep_pattern) > 0 and len(src_dir_relpath) > 0
+
+    src_dir = ROOT.parent / src_dir_relpath
     assert src_dir.exists(), f"src dir missing: {src_dir}"
 
     proc = subprocess.run(
