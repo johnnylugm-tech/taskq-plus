@@ -5,7 +5,7 @@ live in `taskq_plus.cli.commands` and return plain dicts — they NEVER print.
 `cli.main.render` is the single stdout rendering path so the `--json` flag
 behaves identically across every subcommand.
 
-[FR-05]
+[FR-05] [FR-08]
 Citations:
   - SPEC.md §3 FR-05 (eight-subcommand click group; --json; exit-code map).
   - SPEC.md §3 FR-01 (submit, status, list, clear).
@@ -14,7 +14,8 @@ Citations:
   - SPEC.md §3 FR-04 (run <id> --cached; cache-aware replay).
   - SPEC.md §3 FR-06 (graph --format text|dot).
   - SPEC.md §3 FR-07 (plugins list — allowlist regex rejects path-form names).
-  - SPEC.md §3 FR-08 (export --format json|csv|md; NFR-04 secret redaction).
+  - SPEC.md §3 FR-08 (export --format json|csv|md; NFR-04 secret redaction;
+    `correlation_id` 由一次 CLI 呼叫產生,該次呼叫觸發的所有事件共用).
   - SPEC.md §7 (exit-code map: 0/1/2/3/4/5/6).
   - SRS.md §5 (exit-code map cross-reference).
 """
@@ -28,6 +29,7 @@ from typing import Optional, Sequence
 import click
 
 from taskq_plus.cli import commands
+from taskq_plus.observability.audit import AuditLogger, set_current_logger
 
 
 # ---------------------------------------------------------------------------
@@ -393,6 +395,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     """
     if argv is None:
         argv = sys.argv[1:]
+
+    # FR-08: every CLI invocation owns one AuditLogger so all events of that
+    # invocation share a single `correlation_id` (SPEC.md §3 FR-08).  Installed
+    # BEFORE click dispatch so handlers and the executor see the same logger.
+    set_current_logger(AuditLogger())
 
     as_json, cleaned = _extract_json(list(argv))
     ctx_obj: dict = {"json": as_json}

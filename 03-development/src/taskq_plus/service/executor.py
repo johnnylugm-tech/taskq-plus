@@ -53,6 +53,7 @@ from taskq_plus.storage.task_store import (
     load_tasks,
     save_tasks,
 )
+from taskq_plus.observability.audit import current_logger
 
 
 # ---------------------------------------------------------------------------
@@ -152,7 +153,7 @@ def _set_status(task_id: str, updates: Dict[str, Any]) -> None:
 
 
 def _emit_audit(event: str, payload: Dict[str, Any]) -> None:
-    """Append a single audit event to `$TASKQ_HOME/audit.log` (FR-08 shape).
+    """Append a single audit event to `$TASKQ_HOME/audit.log` (legacy FR-01).
 
     Mirrors the helper in `cli/commands.py` so the executor can write
     `plugin_error` events without importing the CLI module (which would
@@ -181,15 +182,18 @@ def _emit_plugin_errors(failures: List[PluginFailure], task_id: str) -> None:
         continue; task execution must not be interrupted).
     """
     for failure in failures:
-        _emit_audit(
-            "plugin_error",
-            {
-                "task_id": task_id,
-                "plugin": failure.plugin,
-                "hook": failure.hook,
-                "error": failure.error,
-            },
-        )
+        detail = {
+            "task_id": task_id,
+            "plugin": failure.plugin,
+            "hook": failure.hook,
+            "error": failure.error,
+        }
+        # Legacy journal (audit.log) — kept so old readers still see the
+        # event.  The canonical FR-08 journal is written below.
+        _emit_audit("plugin_error", detail)
+        # FR-08: structured JSONL audit with the invocation-scoped
+        # `correlation_id`.  NFR-04 redaction runs on the detail payload.
+        current_logger().emit("plugin_error", task_id=task_id, detail=detail)
 
 
 def _dispatch_and_emit(
@@ -496,6 +500,11 @@ def run_with_retry(
         cooldown_seconds=config.breaker_cooldown_seconds,
     )
     if not breaker.allow_request():
+        current_logger().emit(
+            "breaker_open",
+            task_id=task_id,
+            detail={"cooldown_seconds": config.breaker_cooldown_seconds},
+        )
         print(BREAKER_OPEN_MESSAGE, file=sys.stderr)
         return EXIT_BREAKER_OPEN
 
@@ -510,11 +519,31 @@ def run_with_retry(
     plugins = plugin_load_plugins()
     task_record = dict(find_by_id(task_id) or {"id": task_id})
 
+    # FR-08: `run_start` carries the command being executed (NFR-04 redacted
+    # before the bytes reach the disk).
+    current_logger().emit(
+        "run_start",
+        task_id=task_id,
+        detail={"command": task_record.get("command", "")},
+    )
+
     _dispatch_and_emit("pre_run", plugins, task_record)
 
     exit_code = run(task_id)
     attempt = 0
     while exit_code in RETRYABLE_EXITS and attempt < config.retry_limit:
+        # FR-08: emit a `retry` event per FR-03 exponential-backoff attempt
+        # so the journal shows the retry sequence verbatim.
+        current_logger().emit(
+            "retry",
+            task_id=task_id,
+            detail={
+                "attempt": attempt + 1,
+                "backoff_seconds": compute_backoff_seconds(
+                    attempt, config.backoff_base_seconds
+                ),
+            },
+        )
         sleep(compute_backoff_seconds(attempt, config.backoff_base_seconds))
         exit_code = run(task_id)
         attempt += 1
@@ -523,6 +552,16 @@ def run_with_retry(
     # written `status` / `exit_code` / `stdout_tail` / `stderr_tail`).
     finished = dict(find_by_id(task_id) or {"id": task_id})
     _dispatch_and_emit("post_run", plugins, finished, finished)
+
+    # FR-08: `run_end` mirrors `run_start` and records the final outcome.
+    current_logger().emit(
+        "run_end",
+        task_id=task_id,
+        detail={
+            "status": finished.get("status"),
+            "exit_code": exit_code,
+        },
+    )
 
     if exit_code == EXIT_OK:
         breaker.record_success()

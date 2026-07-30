@@ -27,6 +27,8 @@ from typing import Any, Optional, Sequence
 from pydantic import ValidationError
 
 from taskq_plus.models.task import TaskSubmission, generate_task_id
+from taskq_plus.observability import export as obs_export
+from taskq_plus.observability.audit import current_logger
 from taskq_plus.service import dag
 from taskq_plus.service.executor import run_all as exec_run_all
 from taskq_plus.storage.task_store import (
@@ -269,10 +271,26 @@ def submit_cmd(
     }
     append_task(task)
 
+    # Legacy FR-01 audit line (audit.log) — kept so callers that read the
+    # old journal still find a record.  The FR-08 journal (audit.jsonl) is
+    # written below via `current_logger()`.
     _emit_audit(
         "submit",
         {"id": task_id, "command": submission.command, "name": submission.name},
         Path(os.environ.get("TASKQ_HOME", ".")),
+    )
+
+    # FR-08: structured JSONL audit emit with the invocation-scoped
+    # `correlation_id`.  NFR-04 redaction runs on the `detail` payload
+    # before the bytes reach the disk.
+    current_logger().emit(
+        "submit",
+        task_id=task_id,
+        detail={
+            "command": submission.command,
+            "name": submission.name,
+            "depends_on": list(submission.depends_on),
+        },
     )
 
     return {
@@ -450,7 +468,9 @@ def export_cmd(format: str = "json") -> dict:  # noqa: A002
     [FR-05] [FR-08] [NFR-04]
     Citations:
       - SPEC.md §3 FR-05 (export --format json|csv|md).
-      - SPEC.md §3 FR-08 (export writes task records to stdout).
+      - SPEC.md §3 FR-08 (export writes task records to stdout;
+        欄位同 status).
+      - SPEC.md §8 #14 (三種格式 task 數與欄位一致).
       - SPEC.md §8 NFR-04 (CLI must redact `sk-…` / `token=…` / `Bearer …`
         pre-write; a downstream `grep -c "sk-"` on the emitted payload
         returns 0).
@@ -460,43 +480,16 @@ def export_cmd(format: str = "json") -> dict:  # noqa: A002
         raise ExportValidationError(f"unsupported export format {fmt!r}")
 
     tasks = _strict_load_tasks()
-    redacted = [_redact_task(t) for t in tasks]
 
-    if fmt == "json":
-        body = json.dumps({"tasks": redacted}, ensure_ascii=False)
-        return {"format": "json", "content": body, "tasks": redacted}
+    # FR-08: delegate the rendering to `observability.export` so the SAB-bound
+    # module owns the json / csv / md serialisation, the EXPORT_FIELDS set,
+    # and the NFR-04 redaction (applied before the bytes reach stdout).
+    body = obs_export.export_tasks(tasks, fmt)
 
-    if fmt == "csv":
-        buf = io.StringIO()
-        writer = csv.writer(buf)
-        writer.writerow(
-            ["id", "command", "status", "created_at", "name", "depends_on"]
-        )
-        for t in redacted:
-            writer.writerow(
-                [
-                    t.get("id", ""),
-                    t.get("command", ""),
-                    t.get("status", ""),
-                    t.get("created_at", ""),
-                    t.get("name", "") or "",
-                    ",".join(t.get("depends_on") or []),
-                ]
-            )
-        return {"format": "csv", "content": buf.getvalue(), "tasks": redacted}
-
-    # markdown — GitHub-style pipe table.
-    lines = [
-        "| id | command | status | created_at |",
-        "|---|---|---|---|",
-    ]
-    for t in redacted:
-        lines.append(
-            f"| {t.get('id', '')} | {t.get('command', '')} "
-            f"| {t.get('status', '')} | {t.get('created_at', '')} |"
-        )
-    body = "\n".join(lines) + "\n"
-    return {"format": "md", "content": body, "tasks": redacted}
+    # Project each task onto the canonical EXPORT_FIELDS set so the
+    # `tasks` payload round-trips through `parse_export` byte-for-byte.
+    exported_records = [obs_export._normalise_for_export(t) for t in tasks]
+    return {"format": fmt, "content": body, "tasks": exported_records}
 
 
 def clear_cmd() -> dict:

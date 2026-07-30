@@ -286,8 +286,9 @@ def _is_iso8601_utc(value):
 
 # ===========================================================================
 # Row 1 — AC-FR-08.a: audit entry carries the canonical five fields.
+# NFR-04 (pre-write redaction), NFR-05 (docstring coverage on audit.py).
 # ===========================================================================
-def test_fr08_a(taskq_home):
+def test_fr08_a(taskq_home):  # NFR-04, NFR-05
     """AC-FR-08.a: audit entry written with the exact SPEC field set.
 
     Inputs (TEST_SPEC row 1): correlation_id_len_expected="8";
@@ -372,8 +373,9 @@ def test_fr08_a(taskq_home):
 
 # ===========================================================================
 # Row 2 — AC-FR-08.b: one CLI invocation → one shared correlation_id.
+# NFR-04 (audit append-only; no secret on disk), NFR-10 (cross-module integration).
 # ===========================================================================
-def test_fr08_b(taskq_home):
+def test_fr08_b(taskq_home):  # NFR-04, NFR-10
     """AC-FR-08.b: all events of a single CLI invocation share one id.
 
     Inputs (TEST_SPEC row 2): correlation_id_token="abcdef12";
@@ -457,7 +459,7 @@ def test_fr08_b(taskq_home):
         "md",    # row 5
     ],
 )
-def test_fr08_c(taskq_home, export_format):
+def test_fr08_c(taskq_home, export_format):  # NFR-04, NFR-05
     """AC-FR-08.c: json/csv/md agree on task count and field set; CSV escapes.
 
     Inputs (TEST_SPEC rows 3-5): export_format="json"|"csv"|"md";
@@ -567,8 +569,10 @@ def test_fr08_c(taskq_home, export_format):
 
 # ===========================================================================
 # Row 6 — AC-FR-08.d: NFR-04 redaction happens BEFORE the write.
+# NFR-04 (write-time redaction, grep-zero on disk), NFR-09 (every test has
+# at least one assert — anti-fabrication).
 # ===========================================================================
-def test_fr08_d(taskq_home):
+def test_fr08_d(taskq_home):  # NFR-04, NFR-09
     """AC-FR-08.d: no plaintext secret ever reaches the audit journal.
 
     Inputs (TEST_SPEC row 6): secret_pattern_in_command="sk-abcdef1234";
