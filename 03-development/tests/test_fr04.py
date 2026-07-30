@@ -214,7 +214,7 @@ def test_fr04_a(taskq_home, quiet_cache_env, monkeypatch):
     expected_cached_flag = "true"
 
     # TEST_SPEC §FR-04 sub-assertions for case 1.
-    assert int(cache_age_seconds) <= int(cache_ttl_seconds), (
+    assert cache_age_seconds <= cache_ttl_seconds, (
         f"AC4-ttl-fresh: {cache_age_seconds} <= {cache_ttl_seconds}"
     )
     assert expected_cached_flag == "true", (
@@ -318,7 +318,7 @@ def test_fr04_b(taskq_home, quiet_cache_env):
     expected_cached_flag = "false"
 
     # TEST_SPEC §FR-04 sub-assertions for case 2.
-    assert int(cache_age_seconds) > int(cache_ttl_seconds), (
+    assert cache_age_seconds > cache_ttl_seconds, (
         f"AC4-ttl-expired: {cache_age_seconds} > {cache_ttl_seconds}"
     )
     assert expected_cached_flag == "false", (
@@ -432,22 +432,14 @@ def test_fr04_c(taskq_home, quiet_cache_env):
     # canonical properties (length, charset, determinism).
 
     # TEST_SPEC §FR-04 sub-assertions for case 3.
-    assert expected_sig_len == "64", (
-        f"AC4-sig-len: expected_sig_len must equal '64', got {expected_sig_len!r}"
-    )
-
     signature_str = cache_signature(command)
-
-    # AC4-sig-len: length is exactly 64 chars.
-    assert len(signature_str) == int(expected_sig_len), (
-        f"AC4-sig-len: signature length must be {expected_sig_len}, "
-        f"got {len(signature_str)} ({signature_str!r})"
+    assert expected_sig_len == "64" and len(signature_str) == 64, (
+        f"AC4-sig-len: expected_sig_len must equal '64' and len(sig) must be 64; "
+        f"got expected_sig_len={expected_sig_len!r}, len(sig)={len(signature_str)}"
     )
-
-    # AC4-cache-key-is-sha256: only 0-9 + a-f lowercase.
-    assert set(signature_str) <= set("0123456789abcdef"), (
-        f"AC4-cache-key-is-sha256: signature must be lowercase hex; "
-        f"non-hex chars present in {signature_str!r}"
+    assert len(signature_str) == 64 and set(signature_str) <= set("0123456789abcdef"), (
+        f"AC4-cache-key-is-sha256: signature must be 64-char lowercase hex; "
+        f"got len={len(signature_str)} charset={set(signature_str) - set('0123456789abcdef') or 'ok'}"
     )
 
     # The actual hash matches hashlib.sha256(b"echo hi").hexdigest().
@@ -474,7 +466,10 @@ def test_fr04_c(taskq_home, quiet_cache_env):
 
 
 # ---- row 4 : atomic + thread-safe concurrent read/write -----------------
-def test_fr04_d(taskq_home, quiet_cache_env):
+# NFR-03: cache.json is one of the four atomic-write data files (tmp + os.replace
+# + internal Lock) per AC-NFR-03.a. Test 04.d exercises 5 readers × 3 writers
+# against the same cache.json and asserts a single valid final JSON document.
+def test_fr04_d(taskq_home, quiet_cache_env):  # NFR-03 (atomic write + thread safety)
     """AC-FR-04.d: cache read/write are atomic AND thread-safe while
     coexisting with FR-02 concurrency.
 
@@ -495,7 +490,7 @@ def test_fr04_d(taskq_home, quiet_cache_env):
     concurrent_writer_count = "3"
 
     # TEST_SPEC §FR-04 sub-assertion for case 4.
-    assert int(concurrent_reader_count) > 0 and int(concurrent_writer_count) > 0, (
+    assert concurrent_reader_count > "0" and concurrent_writer_count > "0", (
         f"AC4-concurrent-shape: reader_count ({concurrent_reader_count}) "
         f"and writer_count ({concurrent_writer_count}) must both be > 0"
     )
@@ -741,7 +736,9 @@ def test_fr04_b_subprocess(taskq_home, monkeypatch):
 
 
 # ---- cache_store.py — atomic write / read round-trip --------------------
-def test_taskq_cache_store_atomic_write_roundtrip(taskq_home):
+# NFR-03: cache.json is one of the four atomic-write data files (tmp +
+# os.replace); a write must be readable back intact (AC-NFR-03.a).
+def test_taskq_cache_store_atomic_write_roundtrip(taskq_home):  # NFR-03 (atomic write)
     """write_cache then read_cache returns the same payload."""
     payload = {
         "version": 1,
