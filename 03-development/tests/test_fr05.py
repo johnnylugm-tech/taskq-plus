@@ -549,6 +549,19 @@ class TestCliMainInProcess:
         for field in ("id", "command", "status", "created_at"):
             assert field in record, f"status output missing field {field!r}: {record!r}"
 
+    def test_status_human_readable_renders_id_and_status(self, taskq_home):
+        """Lines 273-275 of cli/main.py: `status <id>` without --json prints
+        `<id> <status>` on a single line (SPEC §3 FR-07 human-readable form)."""
+        task_id = _submit_task("echo human-status-probe")
+        code, out, err = _main_capture(["status", task_id])
+        assert code == EXIT_OK, f"status(human) exit={code} stderr={err!r}"
+        rendered = out.strip()
+        # The click wrapper writes "<id> <status>\n" — the test asserts the
+        # body line equals that exact pair.
+        assert rendered == f"{task_id} pending", (
+            f"human-readable status output: {rendered!r}"
+        )
+
     def test_list_filters_by_status(self, taskq_home):
         """`list --status pending` filters the task list by status."""
         _submit_task("echo listed")
@@ -1023,6 +1036,51 @@ class TestCoverageCommandsHelpers:
         assert _cmd_mod._redact(None) is None
         assert _cmd_mod._redact({"k": "v"}) == {"k": "v"}
 
+    def test_redact_string_with_secret_pattern(self):
+        """Line 183: _redact() with a string containing NFR-04 secret → redacted."""
+        redacted = _cmd_mod._redact("echo sk-abcdef1234 hello")
+        assert "[REDACTED]" in redacted
+        assert "sk-abcdef1234" not in redacted
+
+    def test_redact_string_without_secret_passes_through(self):
+        """Line 183: _redact() with a string without secrets returns it verbatim."""
+        assert _cmd_mod._redact("echo hello world") == "echo hello world"
+
+    def test_redact_task_replaces_command_field(self):
+        """Lines 189-191: _redact_task returns a copy with redacted command."""
+        task = {
+            "id": "abcdef12",
+            "command": "echo sk-abcdef1234",
+            "status": "pending",
+        }
+        out = _cmd_mod._redact_task(task)
+        assert out["command"] == "echo [REDACTED]"
+        # original dict not mutated
+        assert task["command"] == "echo sk-abcdef1234"
+        # other fields preserved
+        assert out["id"] == "abcdef12"
+        assert out["status"] == "pending"
+
+    def test_redact_task_with_no_command(self):
+        """Lines 189-191: _redact_task with missing command key uses default ''."""
+        task = {"id": "abcdef12", "status": "pending"}
+        out = _cmd_mod._redact_task(task)
+        assert out["command"] == ""
+
+    def test_tasks_by_id_skips_tasks_with_none_id(self, taskq_home):
+        """Line 137: _tasks_by_id() skips tasks whose id is None."""
+        # Persist a tasks.json containing one task with no `id` and one valid.
+        payload = [
+            {"command": "echo orphan", "status": "pending"},  # no id
+            {"id": "abcdef12", "command": "echo named", "status": "pending"},
+        ]
+        (taskq_home / "tasks.json").write_text(
+            json.dumps(payload), encoding="utf-8"
+        )
+        by_id = _cmd_mod._tasks_by_id()
+        assert "abcdef12" in by_id
+        assert None not in by_id
+
 
 class TestCoverageCommandsHandlers:
     """Cover handler-specific error paths in cli/commands.py."""
@@ -1042,6 +1100,31 @@ class TestCoverageCommandsHandlers:
         """Line 228: depends_on id does not exist → SubmitValidationError."""
         with pytest.raises(_cmd_mod.SubmitValidationError):
             _cmd_mod.submit_cmd("echo x", after=["00000000"])
+
+    def test_submit_cmd_cycle_detected_raises_graph_error(self, taskq_home):
+        """Line 247: cyclic store → submit raises GraphError."""
+        # Pre-seed tasks.json with two tasks that depend on each other.
+        cyclic = [
+            {
+                "id": "aaaa1111",
+                "command": "echo a",
+                "status": "pending",
+                "depends_on": ["bbbb2222"],
+            },
+            {
+                "id": "bbbb2222",
+                "command": "echo b",
+                "status": "pending",
+                "depends_on": ["aaaa1111"],
+            },
+        ]
+        (taskq_home / "tasks.json").write_text(
+            json.dumps(cyclic), encoding="utf-8"
+        )
+        with pytest.raises(_cmd_mod.GraphError) as ei:
+            _cmd_mod.submit_cmd("echo c")
+        # The error message mentions a cycle.
+        assert "cycle" in str(ei.value).lower()
 
     def test_run_cmd_no_task_id_raises(self):
         """Line 285: run_cmd() with no task_id → RunValidationError."""
@@ -1097,6 +1180,35 @@ class TestCoverageCommandsHandlers:
         assert out["count"] == 2
         assert {p["name"] for p in out["plugins"]} == {"alpha_plugin", "beta_plugin"}
         assert all(p["hooks"] == [] for p in out["plugins"])
+
+    def test_plugins_cmd_import_error_raises_plugin_load_error(self, monkeypatch):
+        """Lines 435-437: ImportError on service.plugins → PluginLoadError."""
+        import builtins
+        import sys as _sys
+
+        # Hide the real service.plugins module so the `from taskq_plus.service.plugins import …`
+        # statement raises ImportError.
+        hidden_name = "taskq_plus.service.plugins"
+        original_module = _sys.modules.get(hidden_name)
+        _sys.modules[hidden_name] = None  # sentinel triggers ImportError on re-import
+
+        real_import = builtins.__import__
+
+        def _hook(name, *args, **kwargs):
+            if name == hidden_name or name.startswith(hidden_name + "."):
+                raise ImportError(f"synthetic missing plugin service: {name}")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", _hook)
+        try:
+            with pytest.raises(_cmd_mod.PluginLoadError) as ei:
+                _cmd_mod.plugins_cmd("list")
+            assert "plugin service unavailable" in str(ei.value)
+        finally:
+            if original_module is not None:
+                _sys.modules[hidden_name] = original_module
+            else:
+                _sys.modules.pop(hidden_name, None)
 
     def test_plugins_cmd_skips_empty_pieces(self, monkeypatch):
         """Lines 390-391: empty / whitespace-only pieces are skipped, not rejected."""
