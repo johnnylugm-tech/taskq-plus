@@ -15,7 +15,8 @@
         },
         {
           "name": "taskq_plus.__main__"
-        }
+        },
+        "taskq_plus.cli"
       ],
       "allowed_dependencies": [
         "observability",
@@ -79,7 +80,8 @@
         },
         {
           "name": "taskq_plus.storage.cache_store"
-        }
+        },
+        "taskq_plus.storage"
       ],
       "allowed_dependencies": [
         "models"
@@ -93,7 +95,8 @@
         },
         {
           "name": "taskq_plus.models.errors"
-        }
+        },
+        "taskq_plus.models"
       ],
       "allowed_dependencies": []
     },
@@ -102,7 +105,8 @@
       "modules": [
         {
           "name": "taskq_plus.config"
-        }
+        },
+        "taskq_plus"
       ],
       "allowed_dependencies": []
     }
