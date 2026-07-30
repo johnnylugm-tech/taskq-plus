@@ -368,7 +368,7 @@ def test_fr06_b(taskq_home):  # NFR-09, NFR-10
     # corrupted tasks.json or a hand-edited entry would look on disk), then
     # assert that submit rejects any further mutation against the cyclic
     # store with exit 5 + cycle path on stderr (SPEC §8 #11 / AC-FR-06.b).
-    from taskq_plus.storage.task_store import load_tasks, save_tasks
+    from taskq_plus.storage.task_store import save_tasks
 
     # Pre-seed the canonical A → B → C → A cycle using the stable letter
     # aliases (TEST_SPEC row 3 contract: cycle_node_seq="A,B,C"). The
@@ -413,7 +413,6 @@ def test_fr06_b(taskq_home):  # NFR-09, NFR-10
     # TEST_SPEC contract (cycle_path_token="A -> B -> C -> A"). Accept
     # either the literal token OR the same arrow layout over real ids
     # (the GREEN agent may render with ids, with letter labels, or both).
-    stderr_text = proc_cycle.stderr.lower()
     assert "->" in proc_cycle.stderr, (
         f"AC-FR-06.b: stderr must list the cycle path with '->' arrows, "
         f"got stderr={proc_cycle.stderr!r}"
@@ -604,7 +603,9 @@ def test_fr06_d(taskq_home):  # NFR-03, NFR-01, NFR-10
     # Layer 0 (2 roots): r0, r1.
     # Layer 1 (3 middles): m0, m1, m2 (each depends on both r0 and r1).
     # Layer 2 (5 leaves): l0..l4 (each depends on m0, m1, and m2).
-    submit = lambda argv: _run_cli(argv, taskq_home)
+
+    def submit(argv):
+        return _run_cli(argv, taskq_home)
 
     proc_r0 = submit(["submit", "echo r0"])
     assert proc_r0.returncode == 0

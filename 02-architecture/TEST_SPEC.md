@@ -409,6 +409,29 @@
 
 > Unit / Static NFRs whose verifier is a measurement tool (bandit, pip-licenses, mutmut, readability-v2, ast-docstrings, ast-assertions, gitleaks) NOT a Python test function. These NFRs are delegated to the tool runner (P4 / P5 / P6); TEST_SPEC.md records the test function + layer + title for traceability, but the executable verification is the tool output, not a Python `assert`.
 
+| # | Test Function | Type | Derivation | NFR |
+|---|---|---|---|---|
+| 1 | `test_nfr02_a` | unit/static | NP-04 | NFR-02 |
+| 2 | `test_nfr02_b` | unit/static | NP-04 | NFR-02 |
+| 3 | `test_nfr02_c` | unit/static | NP-04 | NFR-02 |
+| 4 | `test_nfr02_d` | unit/static | NP-04 | NFR-02 |
+| 5 | `test_nfr03_b` | unit/static | NP-03 | NFR-03 |
+| 6 | `test_nfr04_a` | unit/static | NP-04 | NFR-04 |
+| 7 | `test_nfr05_a` | unit/static | NP-05 | NFR-05 |
+| 8 | `test_nfr06_a` | unit/static | NP-04 | NFR-06 |
+| 9 | `test_nfr06_c` | unit/static | NP-04 | NFR-06 |
+| 10 | `test_nfr07_a` | unit/static | NP-07 | NFR-07 |
+| 11 | `test_nfr07_b` | unit/static | NP-07 | NFR-07 |
+| 12 | `test_nfr07_c` | unit/static | NP-07 | NFR-07 |
+| 13 | `test_nfr08_a` | unit/static | NP-08 | NFR-08 |
+| 14 | `test_nfr08_b` | unit/static | NP-08 | NFR-08 |
+| 15 | `test_nfr09_a` | unit/static | NP-09 | NFR-09 |
+| 16 | `test_nfr09_b` | unit/static | NP-09 | NFR-09 |
+| 17 | `test_nfr09_c` | unit/static | NP-09 | NFR-09 |
+| 18 | `test_nfr11_a` | unit/static | NP-11 | NFR-11 |
+| 19 | `test_nfr11_b` | unit/static | NP-11 | NFR-11 |
+| 20 | `test_nfr11_c` | unit/static | NP-11 | NFR-11 |
+
 | # | NFR | Test Function | Layer | Title |
 |---|---|---|---|---|
 | 1 | NFR-02 | `test_nfr02_a` | unit/static | `grep -rn "shell=True\|eval(\|exec(" 03-development/src/` returns 0 hits |

@@ -74,12 +74,12 @@
 
 | Check | Target | State | Status |
 |-------|--------|-------|--------|
-| FR rows emitted (FR-01..FR-08) | 8 | 8 | OK |
-| NFR rows emitted (NFR-01..NFR-12) | 12 | 12 | OK |
-| Each row has Spec Description / Intent Class / Decision Framework / Notes | 100% | 100% | OK |
-| Every row cites `SPEC.md` (root SSOT) | 100% | 100% | OK |
-| Forbidden path `01-requirements/SPEC.md` absent | 0 hits | 0 hits | OK |
-| Forbidden Gates-score column absent | 0 hits | 0 hits | OK |
+| FR rows emitted (FR-01..FR-08) | 8 | 8 | Done |
+| NFR rows emitted (NFR-01..NFR-12) | 12 | 12 | Done |
+| Each row has Spec Description / Intent Class / Decision Framework / Notes | 100% | 100% | Done |
+| Every row cites `SPEC.md` (root SSOT) | 100% | 100% | Done |
+| Forbidden path `01-requirements/SPEC.md` absent | 0 hits | 0 hits | Done |
+| Forbidden Gates-score column absent | 0 hits | 0 hits | Done |
 
 ---
 

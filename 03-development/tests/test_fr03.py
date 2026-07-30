@@ -31,14 +31,12 @@ above with the public API the GREEN TODOs note.
 from __future__ import annotations
 
 import io
-import json
 import os
 import subprocess
 import sys
 import time
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import redirect_stderr
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 

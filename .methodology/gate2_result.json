@@ -1,0 +1,112 @@
+{
+  "quality_complete": true,
+  "breakdown": {
+    "linting": {
+      "score": 100.0,
+      "threshold": 90,
+      "tool_output": ".sessi-work/round_1/tools/linting.txt",
+      "tool_evidence": "ruff check . --output-format json → 0 violations (14 F401/F841/E731/E401 unused-import and lambda findings removed)"
+    },
+    "type_safety": {
+      "score": 100.0,
+      "threshold": 85,
+      "tool_output": ".sessi-work/round_1/tools/type_safety.txt",
+      "tool_evidence": "pyright 03-development/src/ → errorCount=0, warningCount=0 (20 files analyzed)"
+    },
+    "test_coverage": {
+      "score": 97.32,
+      "threshold": 80,
+      "tool_output": ".sessi-work/round_1/tools/coverage.json",
+      "tool_evidence": "coverage run -m pytest 03-development/tests → 4227 statements, 4114 covered lines, 113 missing (97.32%); 298 passed"
+    },
+    "security": {
+      "score": 98.0,
+      "threshold": 80,
+      "tool_output": ".sessi-work/round_1/tools/security.txt",
+      "tool_evidence": "bandit -r 03-development/src/ → 0 HIGH, 0 MEDIUM, 2 LOW (NFR-02 satisfied)"
+    },
+    "secrets_scanning": {
+      "score": 100.0,
+      "threshold": 100,
+      "tool_output": ".sessi-work/round_1/tools/secrets.json",
+      "tool_evidence": "gitleaks detect --config .gitleaks.toml → 0 leaks (allowlist covers NFR-04 redaction test fixtures + .pyc artifacts)"
+    },
+    "license_compliance": {
+      "score": 100.0,
+      "threshold": 100,
+      "tool_output": ".sessi-work/round_1/tools/license.json",
+      "tool_evidence": "scancode --license 03-development/src/ → 53 files scanned, 0 unknown/non-compliant licenses"
+    },
+    "mutation_testing": {
+      "score": null,
+      "threshold": 70,
+      "tool_output": ".sessi-work/round_1/tools/mutation_testing.txt",
+      "tool_evidence": "Disabled by feature flag (harness_config.json: features.mutation_testing=false, the framework default). Framework re-normalises composite excluding this dimension.",
+      "excluded_by_feature_flag": true
+    },
+    "integration_coverage": {
+      "score": 98.6,
+      "threshold": 60,
+      "tool_output": ".sessi-work/round_1/tools/coverage.json",
+      "tool_evidence": "cli/main.py line coverage 98.6% (209/212); cli/commands.py 98.2% (267/272). NFR-10 (>=80%) cleared via CLI entry point."
+    },
+    "test_assertion_quality": {
+      "score": 100.0,
+      "threshold": 60,
+      "tool_output": ".sessi-work/round_1/tools/test_assertion_quality.txt",
+      "tool_evidence": "AST scan: 256 test functions, 660 asserts (density 2.58), 19 zero-assert (7.4%) → formula caps at 100"
+    },
+    "execute_verification_target": {
+      "score": 100.0,
+      "threshold": 100,
+      "tool_output": ".sessi-work/round_1/tools/verify_system.txt",
+      "tool_evidence": "make verify-system → exit 0, stdout 'verify-system: PASS' (pytest 298 passed + CLI smoke submit/run/status/graph/export/clear)"
+    },
+    "traceability": {
+      "score": 66.67,
+      "threshold": 60.0,
+      "tool_output": "",
+      "tool_evidence": "framework: compute_trace_dimension(gate=2) → 4a=100.0% 4b=67.7% 4c=66.7% merged=66.7%",
+      "framework_override": true
+    }
+  },
+  "overall_score": null,
+  "rounds_used": 1,
+  "failing_dimensions": [],
+  "enforcer_sha": "0649bdbe353cb56e9263143fb8886c73ca163e62",
+  "crg_review_context": {
+    "status": "ok",
+    "summary": "Review context for 14 changed file(s):\n  - Risk: low\n  - 0 impacted nodes in 0 files",
+    "risk": "low",
+    "changed_file_count": 14,
+    "impacted_file_count": 0,
+    "key_entities": [],
+    "test_gaps": 0,
+    "next_tool_suggestions": [
+      "detect_changes",
+      "get_affected_flows",
+      "get_impact_radius"
+    ],
+    "context_savings": {
+      "estimated": true,
+      "saved_tokens": 64653,
+      "saved_percent": 100
+    }
+  },
+  "crg_impact_radius": {
+    "status": "ok",
+    "summary": "Blast radius for 14 changed file(s):\n  - 0 nodes directly changed\n  - 0 nodes impacted (within 2 hops)\n  - 0 additional files affected",
+    "risk": "low",
+    "impacted_file_count": 0,
+    "key_entities": [],
+    "truncated": false,
+    "context_savings": {
+      "estimated": true,
+      "saved_tokens": 64666,
+      "saved_percent": 100
+    }
+  },
+  "composite_score": 95.6522,
+  "verdict": "PASS",
+  "passed": true
+}

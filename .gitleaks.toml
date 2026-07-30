@@ -1,0 +1,14 @@
+[extend]
+# Use the default ruleset (covers AWS, GitHub, Stripe, OpenAI, generic API keys, etc.).
+
+[allowlist]
+paths = [
+  '''03-development/tests/__pycache__/.*''',
+  '''02-architecture/TEST_SPEC\.md''',
+  '''03-development/tests/test_fr08\.py''',
+]
+description = '''
+Test fixtures for NFR-04 redaction verification — the literal placeholder token
+"sk-abcdef1234" is an intentional test input, not a real secret. Spec coverage:
+SPEC §NFR-04, TEST_SPEC.md row 6 (`test_fr08_d`, AC8-redaction-pattern-present).
+'''

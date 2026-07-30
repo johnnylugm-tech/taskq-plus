@@ -31,14 +31,12 @@ from __future__ import annotations
 
 import hashlib
 import io
-import json
 import os
 import subprocess
 import sys
-import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import redirect_stderr, redirect_stdout
+from contextlib import redirect_stdout
 from pathlib import Path
 
 import pytest
@@ -427,10 +425,6 @@ def test_fr04_c(taskq_home, quiet_cache_env):
     """
     expected_sig_len = "64"
     command = "echo hi"
-    # Canonical hash for 'echo hi' (sha256, lowercase hex).
-    canonical_signature = (
-        "5a2e9b1c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8"  # not real
-    )
     # NOTE: TEST_SPEC §FR-04 declares `signature_str` as a placeholder hex
     # string. The P3 mirror gate compares predicate structure, not literal
     # equality. We instead compute the REAL sha256(command) and assert the
