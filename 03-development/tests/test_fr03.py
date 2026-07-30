@@ -722,3 +722,411 @@ def test_taskq_breaker_half_open_failure_returns_to_open(taskq_home):
     assert breaker.state == STATE_OPEN, (
         f"HALF_OPEN failure must transition to OPEN, got {breaker.state!r}"
     )
+
+
+# ---- breaker_store.py — atomic-write cleanup + malformed-payload reads ----
+# The `except BaseException` cleanup arm is reachable: a non-JSON-serialisable
+# record makes `json.dump` raise inside the tmp-file context, so the handler
+# runs, unlinks the tmp file, and re-raises (NFR-03 — no partial file is ever
+# promoted to breaker.json by os.replace).
+def test_taskq_breaker_store_write_unlinks_tmp_on_serialization_error(taskq_home):
+    """A non-serialisable record raises and leaves NO tmp file behind."""
+    prior = _with_home(taskq_home)
+    try:
+        with pytest.raises(TypeError):
+            write_breaker({"state": STATE_CLOSED, "bad": object()})
+        leftovers = list(taskq_home.glob("breaker.json.*"))
+        promoted = (taskq_home / "breaker.json").exists()
+    finally:
+        _restore_home(prior)
+    assert leftovers == [], (
+        f"atomic-write cleanup must unlink the tmp file, found {leftovers!r}"
+    )
+    assert not promoted, (
+        "a failed write must NOT create/replace breaker.json (os.replace "
+        "is never reached when json.dump raises)"
+    )
+
+
+def test_taskq_breaker_store_write_survives_unlink_failure(taskq_home, monkeypatch):
+    """When tmp cleanup itself fails (OSError), the original error still raises."""
+    def _boom(_path):
+        raise OSError("cleanup denied")
+
+    prior = _with_home(taskq_home)
+    try:
+        monkeypatch.setattr(os, "unlink", _boom)
+        with pytest.raises(TypeError):
+            write_breaker({"state": STATE_CLOSED, "bad": object()})
+    finally:
+        _restore_home(prior)
+
+
+def test_taskq_breaker_store_read_returns_none_on_corrupt_json(taskq_home):
+    """A truncated / invalid breaker.json reads back as None, not an exception."""
+    (taskq_home / "breaker.json").write_text("{not valid json", encoding="utf-8")
+    prior = _with_home(taskq_home)
+    try:
+        result = read_breaker()
+    finally:
+        _restore_home(prior)
+    assert result is None, (
+        f"corrupt breaker.json must degrade to None (cold start), got {result!r}"
+    )
+
+
+def test_taskq_breaker_store_read_returns_none_when_payload_not_dict(taskq_home):
+    """A well-formed but non-object breaker.json (JSON array) reads back None."""
+    (taskq_home / "breaker.json").write_text("[1, 2, 3]", encoding="utf-8")
+    prior = _with_home(taskq_home)
+    try:
+        result = read_breaker()
+    finally:
+        _restore_home(prior)
+    assert result is None, (
+        f"non-dict breaker.json payload must return None, got {result!r}"
+    )
+
+
+# ---- executor.py — env parsing / tail truncation helpers ------------------
+def test_taskq_executor_read_env_falls_back_when_unparseable(monkeypatch):
+    """_read_env returns the default for unset, empty AND unparseable values."""
+    from taskq_plus.service.executor import _read_env
+
+    monkeypatch.delenv("TASKQ_COV_KNOB", raising=False)
+    assert _read_env("TASKQ_COV_KNOB", int, 7) == 7, "unset → default"
+
+    monkeypatch.setenv("TASKQ_COV_KNOB", "")
+    assert _read_env("TASKQ_COV_KNOB", int, 7) == 7, "empty → default"
+
+    monkeypatch.setenv("TASKQ_COV_KNOB", "not-a-number")
+    assert _read_env("TASKQ_COV_KNOB", int, 7) == 7, (
+        "ValueError from parse() must fall back to the default, not propagate"
+    )
+
+    monkeypatch.setenv("TASKQ_COV_KNOB", "11")
+    assert _read_env("TASKQ_COV_KNOB", int, 7) == 11, "parseable → parsed value"
+
+
+def test_taskq_executor_truncate_tail_none_bytes_and_overflow():
+    """_truncate_tail: None → '', bytes decoded, over-long text keeps the TAIL."""
+    from taskq_plus.service.executor import TAIL_BOUND, _truncate_tail
+
+    assert _truncate_tail(None) == "", "None must coerce to the empty string"
+    assert _truncate_tail(b"hello bytes") == "hello bytes", "bytes must decode"
+    assert _truncate_tail(b"\xff\xferaw") == "��raw", (
+        "undecodable bytes use errors='replace' rather than raising"
+    )
+    assert _truncate_tail(123) == "123", "non-str/bytes coerce via str()"
+
+    short = "x" * TAIL_BOUND
+    assert _truncate_tail(short) == short, "exactly TAIL_BOUND is not truncated"
+
+    long_text = "A" * 50 + "B" * TAIL_BOUND
+    tail = _truncate_tail(long_text)
+    assert len(tail) == TAIL_BOUND, f"tail must be {TAIL_BOUND} chars, got {len(tail)}"
+    assert tail == "B" * TAIL_BOUND, "truncation must keep the LAST chars, not the first"
+
+
+def test_taskq_executor_resolve_timeout_and_max_workers_read_env(monkeypatch):
+    """_resolve_timeout / _resolve_max_workers read their env knobs."""
+    from taskq_plus.service.executor import (
+        DEFAULT_MAX_WORKERS,
+        DEFAULT_TIMEOUT_S,
+        _resolve_max_workers,
+        _resolve_timeout,
+    )
+
+    monkeypatch.delenv("TASKQ_TASK_TIMEOUT", raising=False)
+    monkeypatch.delenv("TASKQ_MAX_WORKERS", raising=False)
+    assert _resolve_timeout() == DEFAULT_TIMEOUT_S
+    assert _resolve_max_workers() == DEFAULT_MAX_WORKERS
+
+    monkeypatch.setenv("TASKQ_TASK_TIMEOUT", "1.5")
+    monkeypatch.setenv("TASKQ_MAX_WORKERS", "9")
+    assert _resolve_timeout() == 1.5, "TASKQ_TASK_TIMEOUT must be honoured"
+    assert _resolve_max_workers() == 9, "TASKQ_MAX_WORKERS must be honoured"
+
+
+def test_taskq_executor_topological_levels_groups_by_dependency():
+    """_topological_levels delegates to the FR-06 Kahn layering."""
+    from taskq_plus.service.executor import _topological_levels
+
+    tasks = [
+        {"id": "b", "depends_on": ["a"], "status": "pending"},
+        {"id": "a", "depends_on": [], "status": "pending"},
+        {"id": "c", "depends_on": ["b"], "status": "pending"},
+    ]
+    levels = _topological_levels(tasks)
+    flat = [tid for level in levels for tid in level]
+    assert flat.index("a") < flat.index("b") < flat.index("c"), (
+        f"dependency order must be respected, got levels={levels!r}"
+    )
+
+
+# ---- executor.py — execute_task / run state machine -----------------------
+def test_taskq_executor_execute_task_unknown_id_returns_none(taskq_home):
+    """execute_task on an id that is not in the store returns None."""
+    from taskq_plus.service.executor import execute_task
+
+    prior = _with_home(taskq_home)
+    try:
+        result = execute_task("no-such-task")
+    finally:
+        _restore_home(prior)
+    assert result is None, f"unknown task id must yield None, got {result!r}"
+
+
+def test_taskq_executor_execute_task_timeout_sets_timeout_status(
+    taskq_home, monkeypatch
+):
+    """A command exceeding TASKQ_TASK_TIMEOUT lands in status=timeout, code None."""
+    from taskq_plus.service.executor import execute_task
+
+    _seed_pending(taskq_home, task_id="slow", command="sleep 30")
+    monkeypatch.setenv("TASKQ_TASK_TIMEOUT", "0.3")
+
+    prior = _with_home(taskq_home)
+    try:
+        result = execute_task("slow")
+    finally:
+        _restore_home(prior)
+
+    assert result is not None, "execute_task must return a result dict"
+    assert result["status"] == "timeout", (
+        f"exceeding the timeout must set status=timeout, got {result['status']!r}"
+    )
+    assert result["exit_code"] is None, (
+        f"a timed-out task has no exit code, got {result['exit_code']!r}"
+    )
+    assert "duration_ms" in result and "finished_at" in result
+
+
+def test_taskq_executor_run_maps_status_to_exit_code(taskq_home, monkeypatch):
+    """run() maps done→0, non-zero→1, timeout→4, unknown-id→1."""
+    from taskq_plus.service.executor import (
+        EXIT_FAILED,
+        EXIT_OK,
+        EXIT_TIMEOUT,
+        run,
+    )
+
+    _seed_pending(taskq_home, task_id="ok", command="echo hi")
+    _seed_pending(taskq_home, task_id="bad", command="false")
+    _seed_pending(taskq_home, task_id="slow", command="sleep 30")
+
+    prior = _with_home(taskq_home)
+    try:
+        assert run("ok") == EXIT_OK, "exit 0 → done → CLI exit 0"
+        assert run("bad") == EXIT_FAILED, "non-zero exit → failed → CLI exit 1"
+        assert run("ghost") == EXIT_FAILED, "unknown id → CLI exit 1"
+        monkeypatch.setenv("TASKQ_TASK_TIMEOUT", "0.3")
+        assert run("slow") == EXIT_TIMEOUT, "timeout → CLI exit 4"
+    finally:
+        _restore_home(prior)
+
+
+# ---- executor.py — FR-06 dependency gating -------------------------------
+def test_taskq_executor_unmet_dependencies_reports_non_done_deps(taskq_home):
+    """_unmet_dependencies: pending dep is unmet, done dep and absent dep are not."""
+    from taskq_plus.service.executor import _unmet_dependencies
+
+    _seed_pending(taskq_home, task_id="dep_pending", command="echo a")
+    _seed_pending(taskq_home, task_id="dep_done", command="echo b", status="done")
+    _seed_pending(
+        taskq_home,
+        task_id="child",
+        command="echo c",
+        depends_on=["dep_pending", "dep_done", "dep_missing"],
+    )
+
+    prior = _with_home(taskq_home)
+    try:
+        unmet = _unmet_dependencies("child")
+        no_such = _unmet_dependencies("not-a-task")
+    finally:
+        _restore_home(prior)
+
+    assert unmet == ["dep_pending"], (
+        "only deps that EXIST and are not 'done' are unmet (an absent dep "
+        f"cannot gate the task), got {unmet!r}"
+    )
+    assert no_such == [], "an unknown task id has no dependencies"
+
+
+def test_taskq_executor_execute_or_block_marks_blocked(taskq_home):
+    """_execute_or_block marks a task blocked when a dep is not done, else runs it."""
+    from taskq_plus.service.executor import _execute_or_block
+    from taskq_plus.storage.task_store import find_by_id
+
+    _seed_pending(taskq_home, task_id="parent", command="false")
+    _seed_pending(taskq_home, task_id="kid", command="echo hi", depends_on=["parent"])
+    _seed_pending(taskq_home, task_id="free", command="echo hi")
+
+    prior = _with_home(taskq_home)
+    try:
+        blocked_result = _execute_or_block("kid")
+        blocked_rec = find_by_id("kid")
+        ran_result = _execute_or_block("free")
+    finally:
+        _restore_home(prior)
+
+    assert blocked_result is None, "a blocked task must not produce a run result"
+    assert blocked_rec["status"] == "blocked", (
+        f"unmet dependency must set status=blocked, got {blocked_rec['status']!r}"
+    )
+    assert ran_result is not None and ran_result["status"] == "done", (
+        f"a task with no unmet deps must execute, got {ran_result!r}"
+    )
+
+
+def test_taskq_executor_run_all_respects_layers_and_blocks(taskq_home):
+    """run_all executes pending tasks in dependency layers, blocking downstream."""
+    from taskq_plus.service.executor import run_all
+    from taskq_plus.storage.task_store import find_by_id
+
+    _seed_pending(taskq_home, task_id="root", command="echo root")
+    _seed_pending(taskq_home, task_id="mid", command="false", depends_on=["root"])
+    _seed_pending(taskq_home, task_id="leaf", command="echo leaf", depends_on=["mid"])
+
+    prior = _with_home(taskq_home)
+    try:
+        run_all()
+        root = find_by_id("root")
+        mid = find_by_id("mid")
+        leaf = find_by_id("leaf")
+    finally:
+        _restore_home(prior)
+
+    assert root["status"] == "done", f"root should run and succeed, got {root!r}"
+    assert mid["status"] == "failed", f"mid runs and fails, got {mid!r}"
+    assert leaf["status"] == "blocked", (
+        f"leaf's dep did not reach 'done' → blocked (transitively), got {leaf!r}"
+    )
+
+
+def test_taskq_executor_run_all_is_noop_without_pending_tasks(taskq_home):
+    """run_all returns immediately when nothing is pending."""
+    from taskq_plus.service.executor import run_all
+    from taskq_plus.storage.task_store import find_by_id
+
+    _seed_pending(taskq_home, task_id="already", command="echo hi", status="done")
+
+    prior = _with_home(taskq_home)
+    try:
+        assert run_all() is None, "run_all has no return value"
+        rec = find_by_id("already")
+    finally:
+        _restore_home(prior)
+
+    assert rec["status"] == "done", (
+        f"a non-pending task must not be re-executed, got {rec['status']!r}"
+    )
+
+
+# ---- executor.py — FR-07 plugin_error audit emission ---------------------
+def test_taskq_executor_emit_plugin_errors_writes_one_event_per_failure(taskq_home):
+    """_emit_plugin_errors appends a plugin_error audit event per PluginFailure."""
+    import json as _json
+
+    from taskq_plus.service.executor import _emit_plugin_errors
+    from taskq_plus.service.plugins import PluginFailure
+
+    failures = [
+        PluginFailure(hook="pre_run", plugin="alpha", error="boom"),
+        PluginFailure(hook="post_run", plugin="beta", error="bang"),
+    ]
+
+    prior = _with_home(taskq_home)
+    try:
+        _emit_plugin_errors(failures, "task-42")
+    finally:
+        _restore_home(prior)
+
+    lines = [
+        _json.loads(line)
+        for line in (taskq_home / "audit.log").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    events = [e for e in lines if e.get("event") == "plugin_error"]
+    assert len(events) == 2, (
+        f"one plugin_error event per failure expected, got {len(events)}: {lines!r}"
+    )
+    assert {e["plugin"] for e in events} == {"alpha", "beta"}
+    assert {e["hook"] for e in events} == {"pre_run", "post_run"}
+    assert all(e["task_id"] == "task-42" for e in events), (
+        "every event must carry the originating task_id"
+    )
+
+
+def test_taskq_executor_dispatch_and_emit_extracts_task_id(taskq_home):
+    """_dispatch_and_emit returns the dispatch result and survives no plugins."""
+    from taskq_plus.service.executor import _dispatch_and_emit
+
+    prior = _with_home(taskq_home)
+    try:
+        with_task = _dispatch_and_emit("pre_run", [], {"id": "t-7"})
+        without_args = _dispatch_and_emit("post_run", [])
+        non_dict_arg = _dispatch_and_emit("pre_run", [], "not-a-dict")
+    finally:
+        _restore_home(prior)
+
+    for label, result in (
+        ("with task dict", with_task),
+        ("with no args", without_args),
+        ("with non-dict arg", non_dict_arg),
+    ):
+        assert result is not None, f"dispatch result must be returned ({label})"
+        assert result.failures == [], f"no plugins → no failures ({label})"
+
+
+# ---- executor.py — run_with_retry feeds the breaker on final failure -----
+def test_taskq_executor_run_with_retry_records_final_failure(taskq_home, monkeypatch):
+    """A final failure advances the persisted breaker counter (FR-03 AC)."""
+    monkeypatch.setenv("TASKQ_RETRY_LIMIT", "0")
+    monkeypatch.setenv("TASKQ_BACKOFF_BASE", "0")
+    monkeypatch.setenv("TASKQ_BREAKER_THRESHOLD", "3")
+    monkeypatch.setenv("TASKQ_BREAKER_COOLDOWN", "60")
+    _seed_pending(taskq_home, task_id="failing", command="false")
+
+    prior = _with_home(taskq_home)
+    try:
+        code = run_with_retry("failing", sleep_fn=lambda _s: None)
+        record = read_breaker()
+    finally:
+        _restore_home(prior)
+
+    assert code == 1, f"a failing task returns CLI exit 1, got {code}"
+    assert record is not None, "run_with_retry must persist the breaker record"
+    assert record.get("state") == STATE_CLOSED, (
+        f"1 failure < threshold 3 → still CLOSED, got {record.get('state')!r}"
+    )
+    counter = record.get("consecutive_failures", record.get("failure_count"))
+    assert counter == 1, (
+        f"one final failure must advance the counter to 1, got {record!r}"
+    )
+
+
+def test_taskq_executor_run_with_retry_records_success(taskq_home, monkeypatch):
+    """A success closes the breaker and zeroes the counter (FR-03 AC)."""
+    monkeypatch.setenv("TASKQ_RETRY_LIMIT", "0")
+    monkeypatch.setenv("TASKQ_BACKOFF_BASE", "0")
+    monkeypatch.setenv("TASKQ_BREAKER_THRESHOLD", "3")
+    monkeypatch.setenv("TASKQ_BREAKER_COOLDOWN", "60")
+    _seed_pending(taskq_home, task_id="okay", command="echo hi")
+
+    prior = _with_home(taskq_home)
+    try:
+        write_breaker(
+            {"version": 1, "state": STATE_CLOSED, "consecutive_failures": 2,
+             "opened_at": None}
+        )
+        code = run_with_retry("okay", sleep_fn=lambda _s: None)
+        record = read_breaker()
+    finally:
+        _restore_home(prior)
+
+    assert code == 0, f"a succeeding task returns CLI exit 0, got {code}"
+    counter = record.get("consecutive_failures", record.get("failure_count"))
+    assert counter == 0, f"success must zero the failure counter, got {record!r}"
+    assert record.get("state") == STATE_CLOSED
