@@ -133,6 +133,37 @@ def _emit_error(msg: str) -> None:
     click.echo(f"error: {msg}", err=True)
 
 
+def _propagate_json(ctx, _param, value):
+    """click callback: set ctx.obj['json']=True when --json is given.
+
+    Returning `value` keeps the option's behavior visible (the flag is still
+    on the command line) but `expose_value=False` (see `_json_flag`) drops
+    the parameter from the handler signature so handlers never see it.
+    """
+    if ctx is not None and ctx.obj is not None and value:
+        ctx.obj["json"] = True
+    return value
+
+
+def _json_flag():
+    """Reusable `--json` click option for the per-subcommand alias.
+
+    The global `--json` flag is parsed by `_extract_json` in `main()` and
+    seeds `ctx.obj["json"]`. The per-subcommand `--json` alias (e.g.
+    `submit --json`, `export --json`) was preserved so handlers can also
+    be invoked as `handler --json` from the legacy argparse path used by
+    `test_fr01`. Both paths converge on the same `ctx.obj["json"]` state.
+    """
+    return click.option(
+        "--json",
+        is_flag=True,
+        default=False,
+        help="Emit JSON output (alias for the global --json flag).",
+        callback=_propagate_json,
+        expose_value=False,
+    )
+
+
 def _render_for(ctx: click.Context, payload: dict) -> None:
     """Render `payload` honouring the `--json` flag from `ctx.obj`."""
     render(payload, bool(ctx.obj.get("json", False)) if ctx.obj else False)
@@ -160,20 +191,12 @@ def cli(ctx: click.Context) -> None:
     multiple=True,
     help="Task id this task depends on (repeatable).",
 )
-@click.option(
-    "--json",
-    "as_json",
-    is_flag=True,
-    default=False,
-    help="Emit JSON output (alias for the global --json flag).",
-)
+@_json_flag()
 @click.pass_context
 def submit(
-    ctx: click.Context, command: str, name: Optional[str], after: tuple, as_json: bool
+    ctx: click.Context, command: str, name: Optional[str], after: tuple
 ) -> int:
     """Submit a new task."""
-    if as_json:
-        ctx.obj["json"] = True
     try:
         payload = commands.submit_cmd(command, name=name, after=list(after))
     except commands.SubmitValidationError as exc:
@@ -190,24 +213,15 @@ def submit(
 @click.argument("task_id", required=False, default=None)
 @click.option("--all", "run_all", is_flag=True, default=False)
 @click.option("--cached", "use_cache", is_flag=True, default=False)
-@click.option(
-    "--json",
-    "as_json",
-    is_flag=True,
-    default=False,
-    help="Emit JSON output (alias for the global --json flag).",
-)
+@_json_flag()
 @click.pass_context
 def run(
     ctx: click.Context,
     task_id: Optional[str],
     run_all: bool,
     use_cache: bool,
-    as_json: bool,
 ) -> int:
     """Execute a pending task (or --all)."""
-    if as_json:
-        ctx.obj["json"] = True
     try:
         payload = commands.run_cmd(task_id=task_id, run_all=run_all, use_cache=use_cache)
     except commands.RunValidationError as exc:
@@ -226,20 +240,10 @@ def run(
 
 @cli.command(name="status")
 @click.argument("task_id")
-@click.option(
-    "--json",
-    "as_json",
-    is_flag=True,
-    default=False,
-    help="Emit JSON output (alias for the global --json flag).",
-)
+@_json_flag()
 @click.pass_context
-def status(
-    ctx: click.Context, task_id: str, as_json: bool
-) -> int:
+def status(ctx: click.Context, task_id: str) -> int:
     """Show the full record for a task."""
-    if as_json:
-        ctx.obj["json"] = True
     try:
         payload = commands.status_cmd(task_id)
     except commands.StatusValidationError as exc:
@@ -251,20 +255,12 @@ def status(
 
 @cli.command(name="list")
 @click.option("--status", "status_filter", default=None)
-@click.option(
-    "--json",
-    "as_json",
-    is_flag=True,
-    default=False,
-    help="Emit JSON output (alias for the global --json flag).",
-)
+@_json_flag()
 @click.pass_context
 def list_cmd(  # noqa: A001 — match click subcommand name `list`
-    ctx: click.Context, status_filter: Optional[str], as_json: bool
+    ctx: click.Context, status_filter: Optional[str]
 ) -> int:
     """List tasks (optionally filtered by --status)."""
-    if as_json:
-        ctx.obj["json"] = True
     try:
         payload = commands.list_cmd(status_filter=status_filter)
     except commands.StoreCorrupted as exc:
@@ -282,20 +278,10 @@ def list_cmd(  # noqa: A001 — match click subcommand name `list`
     default="text",
     show_default=True,
 )
-@click.option(
-    "--json",
-    "as_json",
-    is_flag=True,
-    default=False,
-    help="Emit JSON output (alias for the global --json flag).",
-)
+@_json_flag()
 @click.pass_context
-def graph(
-    ctx: click.Context, format_name: str, as_json: bool
-) -> int:
+def graph(ctx: click.Context, format_name: str) -> int:
     """Render the dependency graph as text or dot."""
-    if as_json:
-        ctx.obj["json"] = True
     try:
         payload = commands.graph_cmd(format_name)
     except commands.StoreCorrupted as exc:
@@ -311,18 +297,10 @@ def plugins() -> None:
 
 
 @plugins.command(name="list")
-@click.option(
-    "--json",
-    "as_json",
-    is_flag=True,
-    default=False,
-    help="Emit JSON output (alias for the global --json flag).",
-)
+@_json_flag()
 @click.pass_context
-def plugins_list(ctx: click.Context, as_json: bool) -> int:
+def plugins_list(ctx: click.Context) -> int:
     """List loaded plugins and their hooks."""
-    if as_json:
-        ctx.obj["json"] = True
     try:
         payload = commands.plugins_cmd("list")
     except commands.PluginValidationError as exc:
@@ -343,20 +321,12 @@ def plugins_list(ctx: click.Context, as_json: bool) -> int:
     default="json",
     show_default=True,
 )
-@click.option(
-    "--json",
-    "as_json",
-    is_flag=True,
-    default=False,
-    help="Emit JSON output (alias for the global --json flag).",
-)
+@_json_flag()
 @click.pass_context
 def export_cmd(  # noqa: A001 — match click subcommand name `export`
-    ctx: click.Context, format_name: str, as_json: bool
+    ctx: click.Context, format_name: str
 ) -> int:
     """Export task records as json, csv, or md."""
-    if as_json:
-        ctx.obj["json"] = True
     try:
         payload = commands.export_cmd(format_name)
     except commands.ExportValidationError as exc:
@@ -373,18 +343,10 @@ def export_cmd(  # noqa: A001 — match click subcommand name `export`
 
 
 @cli.command(name="clear")
-@click.option(
-    "--json",
-    "as_json",
-    is_flag=True,
-    default=False,
-    help="Emit JSON output (alias for the global --json flag).",
-)
+@_json_flag()
 @click.pass_context
-def clear_cmd(ctx: click.Context, as_json: bool) -> int:  # noqa: A001
+def clear_cmd(ctx: click.Context) -> int:  # noqa: A001
     """Remove every data file under $TASKQ_HOME."""
-    if as_json:
-        ctx.obj["json"] = True
     payload = commands.clear_cmd()
     _render_for(ctx, payload)
     return EXIT_OK
