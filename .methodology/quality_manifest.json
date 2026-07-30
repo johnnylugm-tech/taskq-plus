@@ -1,0 +1,158 @@
+{
+  "schema_version": "1.0",
+  "generated_at_phase": 2,
+  "fr_ids": [
+    "FR-01",
+    "FR-02",
+    "FR-03",
+    "FR-04",
+    "FR-05",
+    "FR-06",
+    "FR-07",
+    "FR-08"
+  ],
+  "nfr_dimension_mapping": {
+    "NFR-01": "performance",
+    "NFR-02": "security",
+    "NFR-03": "error_handling",
+    "NFR-04": "security",
+    "NFR-05": "readability",
+    "NFR-06": "readability",
+    "NFR-07": "readability",
+    "NFR-08": "test_assertion_quality",
+    "NFR-09": "test_assertion_quality",
+    "NFR-10": "test_assertion_quality",
+    "NFR-11": "readability",
+    "NFR-12": "test_assertion_quality"
+  },
+  "nfr_fr_mapping": {},
+  "nfr_traceability": {
+    "NFR-01": {
+      "type": "performance",
+      "target": "submit+status p95 < 50ms; 200-task topological sort p95 < 200ms",
+      "module": "taskq_plus.service.dag"
+    },
+    "NFR-02": {
+      "type": "security",
+      "target": "0 shell=True/eval(/exec( hits; bandit 0 HIGH 0 MEDIUM",
+      "module": "taskq_plus.service.plugins"
+    },
+    "NFR-03": {
+      "type": "reliability",
+      "target": "atomic write on all 4 data files; no bare except; breaker recovery <= cooldown + 1s",
+      "module": "taskq_plus.storage.atomic"
+    },
+    "NFR-04": {
+      "type": "security",
+      "target": "0 plaintext secrets on disk; redaction before write",
+      "module": "taskq_plus.observability.audit"
+    },
+    "NFR-05": {
+      "type": "maintainability",
+      "target": "100% docstring coverage with [FR-XX]/[NFR-XX] citation",
+      "module": "taskq_plus.cli.commands"
+    },
+    "NFR-06": {
+      "type": "maintainability",
+      "target": "lint-imports exit 0 on layers contract cli > observability > service > storage > models",
+      "module": "taskq_plus.config"
+    },
+    "NFR-07": {
+      "type": "maintainability",
+      "target": "all runtime deps pinned with == and licensed MIT/BSD-2/BSD-3/Apache-2.0; SBOM emitted",
+      "module": "taskq_plus.storage.task_store"
+    },
+    "NFR-08": {
+      "type": "testability",
+      "target": "mutation score >= 70 over service/ and storage/",
+      "module": "taskq_plus.service.executor"
+    },
+    "NFR-09": {
+      "type": "testability",
+      "target": "0 skipped tests; 0 zero-assertion test functions",
+      "module": "taskq_plus.service.breaker"
+    },
+    "NFR-10": {
+      "type": "testability",
+      "target": "integration line coverage >= 80 driven through the CLI entry point",
+      "module": "taskq_plus.cli.main"
+    },
+    "NFR-11": {
+      "type": "maintainability",
+      "target": "project MI >= 80; per-function complexity <= 10; <= 400 lines per file",
+      "module": "taskq_plus.service.cache"
+    },
+    "NFR-12": {
+      "type": "testability",
+      "target": "make verify-system exit 0 and prints verify-system: PASS",
+      "module": "taskq_plus.observability.export"
+    }
+  },
+  "quality_targets": {
+    "max_complexity": 10,
+    "min_coverage": 100,
+    "max_coupling": 0.3
+  },
+  "fr_module_traceability": {
+    "FR-01": [
+      "taskq_plus.models.task",
+      "taskq_plus.storage.task_store",
+      "taskq_plus.cli.commands"
+    ],
+    "FR-02": [
+      "taskq_plus.service.executor",
+      "taskq_plus.storage.task_store"
+    ],
+    "FR-03": [
+      "taskq_plus.service.breaker",
+      "taskq_plus.storage.breaker_store",
+      "taskq_plus.service.executor"
+    ],
+    "FR-04": [
+      "taskq_plus.service.cache",
+      "taskq_plus.storage.cache_store"
+    ],
+    "FR-05": [
+      "taskq_plus.cli.main",
+      "taskq_plus.cli.commands",
+      "taskq_plus.__main__"
+    ],
+    "FR-06": [
+      "taskq_plus.service.dag"
+    ],
+    "FR-07": [
+      "taskq_plus.service.plugins"
+    ],
+    "FR-08": [
+      "taskq_plus.observability.audit",
+      "taskq_plus.observability.export"
+    ]
+  },
+  "architecture_constraints": [
+    "no_circular_dependencies",
+    "layers_cli_observability_service_storage_models",
+    "config_is_independence_module",
+    "no_shell_true",
+    "no_eval_exec_dynamic_import",
+    "max_15_files_per_directory"
+  ],
+  "high_risk_modules": [
+    "taskq_plus.service.executor",
+    "taskq_plus.service.plugins",
+    "taskq_plus.storage.task_store"
+  ],
+  "gate_score_overrides": {
+    "performance": 75.0,
+    "security": 80.0,
+    "error_handling": 80.0,
+    "readability": 80.0,
+    "test_assertion_quality": 80.0,
+    "test_coverage": 100.0
+  },
+  "gate_results": {
+    "gate1": {},
+    "gate2": null,
+    "gate3": null,
+    "gate4": null
+  }
+}
