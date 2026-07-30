@@ -1,8 +1,8 @@
 # Harness Methodology — Session Handover
 
-**Checkpoint**: `P3-mid-20260730`  
+**Checkpoint**: `P3-pre-gate2-20260730`  
 **Phase**: P3 — Implementation  
-**Generated**: 2026-07-30T13:38:13Z
+**Generated**: 2026-07-30T16:38:45Z
 
 > ⚠️  **開始下一個工作階段前，請先執行 `/compact` 壓縮上下文**，再從「接下來的工作」繼續。
 
@@ -31,7 +31,7 @@ git clone --recurse-submodules https://github.com/johnnylugm-tech/taskq-plus.git
 git log --oneline -3
 
 # Confirm FSM state
-cat .methodology/state.json   # expected: phase=3 state=RUNNING last_gate=1 last_fr=FR-04
+cat .methodology/state.json   # expected: phase=3 state=RUNNING last_gate=1 last_fr=FR-08
 
 # Read active plan
 cat .methodology/phase3_plan.md
@@ -41,18 +41,18 @@ cat .methodology/phase3_plan.md
 |------|----|
 | Remote | `https://github.com/johnnylugm-tech/taskq-plus.git` |
 | Branch | `main` |
-| State | `phase=3 state=RUNNING last_gate=1 last_fr=FR-04` |
+| State | `phase=3 state=RUNNING last_gate=1 last_fr=FR-08` |
 | Plan | `.methodology/phase3_plan.md` |
 
 ---
 
 ## 任務背景
 
-P3 Implementation in progress (≥50% milestone). 4/8 FRs done.
+P3 Implementation complete. Gate 2 not yet executed.
 
 ## 目前執行狀況
 
-4/8 FRs Gate 1 PASS [FR-01,FR-02,FR-03,FR-04]. TDD cycles complete for passing FRs.
+All 8 FR(s) Gate 1 PASS [FR-01,FR-02,FR-03,FR-04,FR-05,…+3]. Gate 2 evaluation not yet started.
 
 **A/B Session Results:**
   - None / preflight-probe: **complete**
@@ -102,34 +102,42 @@ P3 Implementation in progress (≥50% milestone). 4/8 FRs done.
   - ? / gate1-verify-FR-02: **complete**
   - ? / gate1-verify-FR-03: **complete**
   - ? / gate1-verify-FR-04: **complete**
+  - ? / milestone-p3-mid: **complete**
+  - ? / gate1-verify-FR-05: **complete**
+  - FR-06 / developer: **complete**
+  - ? / tdd-FR-06: **complete**
+  - ? / gate1-verify-FR-06: **complete**
+  - FR-07 / developer: **complete**
+  - FR-08 / developer: **complete**
+  - ? / gate1-verify-FR-08: **complete**
 
 **Recently Committed Files:**
   - `.methodology/.gate1_scores.json`
-  - `.methodology/decision_logs/2026-07-30/GATE_3_1c3f7662.yaml`
-  - `.methodology/decision_logs/2026-07-30/GATE_3_28e569be.yaml`
-  - `.methodology/decision_logs/2026-07-30/GATE_3_cb1d139e.yaml`
-  - `.methodology/decision_logs/2026-07-30/GATE_3_e8e46760.yaml`
+  - `.methodology/decision_logs/2026-07-30/GATE_3_0ba9e160.yaml`
+  - `.methodology/decision_logs/2026-07-30/GATE_3_62b6cd7a.yaml`
+  - `.methodology/decision_logs/2026-07-30/GATE_3_e8d76081.yaml`
+  - `.methodology/decision_logs/2026-07-30/GATE_3_f4a27b1b.yaml`
   - `.methodology/effort_metrics.db`
   - `.methodology/fr_progress.json`
   - `.methodology/gate1_result.json`
-  - `.methodology/gate_results/gate1/FR-04.json`
+  - `.methodology/gate_results/gate1/FR-08.json`
   - `.methodology/gate_timestamps.jsonl`
-  - `.methodology/lessons/4b4da00e884d.md`
-  - `.methodology/lessons/6569c0d0f237.md`
-  - `.methodology/lessons/6f65c73a6b58.md`
+  - `.methodology/lessons/09489c93dbe4.md`
+  - `.methodology/lessons/9dd4759f69ac.md`
   - `.methodology/quality_manifest.json`
   - `.methodology/state.json`
   - `00-summary/Phase3_STAGE_PASS.md`
   - `CLAUDE.md`
-  - `03-development/tests/test_fr04.py`
+  - `03-development/tests/test_fr08.py`
   - `03-development/src/taskq_plus/cli/commands.py`
-  - `03-development/src/taskq_plus/service/cache.py`
+  - `.methodology/SAB.json`
+  - `03-development/src/taskq_plus/observability/export.py`
 
 ## 接下來的工作
 
-1. Complete remaining 4 FR(s): FR-05, FR-06, FR-07, FR-08
-2. Ensure each FR has passing unit tests (TDD)
-3. When all FRs done → `push-milestone --type p3-pre-gate2`
+1. Run Gate 2 evaluation (target score ≥ 75)
+2. Fix any failures during evaluation
+3. On Gate 2 PASS → `finalize-gate --gate 2` handles push + HANDOVER
 
 ## 注意事項
 
@@ -139,9 +147,7 @@ P3 Implementation in progress (≥50% milestone). 4/8 FRs done.
 
 ## 附加資訊
 
-- **fr_done**: 4
-- **fr_total**: 8
-- **remaining_frs**: FR-05, FR-06, FR-07, FR-08
+- **fr_count**: 8
 
 ---
 *由 `HandoverGenerator` 自動生成。下次 push 時此檔案將被覆寫。*

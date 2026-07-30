@@ -1,7 +1,7 @@
 {
   "schema": "harness/traceability/attestation/v1",
-  "git_sha": "93560cd188ad625b75ecb8d997cfa44599ba3dd8",
-  "content_sha256": "0355e8ae4ae846bc3166968d4b8c01fb9cdef14419ba2b94a700917beed5fcda",
+  "git_sha": "faf11ece302aea0348d05025c3ea730ab88544c2",
+  "content_sha256": "4444d09490bdada0249208436c3947ade23983cb31d6a52bd1feb73fa60acd41",
   "tool": "scripts/build_trace_attestation.py",
   "overlay_used": null,
   "overlay_errors": [],
@@ -11,38 +11,20 @@
     "completeness": {
       "total_requirements": 8,
       "srs_coverage": "100.0%",
-      "code_coverage": "62.5%",
-      "test_coverage": "50.0%",
-      "verification_rate": "50.0%",
-      "total_links": 32,
+      "code_coverage": "100.0%",
+      "test_coverage": "100.0%",
+      "verification_rate": "100.0%",
+      "total_links": 52,
       "missing_mappings": {
         "fr_without_srs": [],
-        "fr_without_code": [
-          "FR-05",
-          "FR-06",
-          "FR-07"
-        ],
-        "fr_without_test": [
-          "FR-05",
-          "FR-06",
-          "FR-07",
-          "FR-08"
-        ]
+        "fr_without_code": [],
+        "fr_without_test": []
       }
     },
     "missing": {
       "fr_without_srs": [],
-      "fr_without_code": [
-        "FR-05",
-        "FR-06",
-        "FR-07"
-      ],
-      "fr_without_test": [
-        "FR-05",
-        "FR-06",
-        "FR-07",
-        "FR-08"
-      ]
+      "fr_without_code": [],
+      "fr_without_test": []
     },
     "requirements": {
       "FR-01": {
@@ -51,7 +33,6 @@
         "srs_section": "SAD.md",
         "code_files": [
           "03-development/src/taskq_plus/__init__.py",
-          "03-development/src/taskq_plus/__main__.py",
           "03-development/src/taskq_plus/cli/__init__.py",
           "03-development/src/taskq_plus/cli/commands.py",
           "03-development/src/taskq_plus/models/__init__.py",
@@ -114,39 +95,67 @@
       },
       "FR-05": {
         "fr_id": "FR-05",
-        "status": "pending",
+        "status": "verified",
         "srs_section": "SAD.md",
-        "code_files": [],
-        "test_files": [],
+        "code_files": [
+          "03-development/src/taskq_plus/__main__.py",
+          "03-development/src/taskq_plus/cli/commands.py",
+          "03-development/src/taskq_plus/cli/main.py",
+          "03-development/tests/test_fr05.py"
+        ],
+        "test_files": [
+          "tests/test_fr05.py"
+        ],
         "sad_module": "—",
         "priority": "HIGH"
       },
       "FR-06": {
         "fr_id": "FR-06",
-        "status": "pending",
+        "status": "verified",
         "srs_section": "SAD.md",
-        "code_files": [],
-        "test_files": [],
+        "code_files": [
+          "03-development/src/taskq_plus/cli/commands.py",
+          "03-development/src/taskq_plus/service/dag.py",
+          "03-development/src/taskq_plus/service/executor.py",
+          "03-development/tests/test_fr06.py"
+        ],
+        "test_files": [
+          "tests/test_fr06.py"
+        ],
         "sad_module": "—",
         "priority": "HIGH"
       },
       "FR-07": {
         "fr_id": "FR-07",
-        "status": "pending",
+        "status": "verified",
         "srs_section": "SAD.md",
-        "code_files": [],
-        "test_files": [],
+        "code_files": [
+          "03-development/src/taskq_plus/cli/commands.py",
+          "03-development/src/taskq_plus/cli/main.py",
+          "03-development/src/taskq_plus/service/executor.py",
+          "03-development/src/taskq_plus/service/plugins.py"
+        ],
+        "test_files": [
+          "tests/test_fr07.py"
+        ],
         "sad_module": "—",
         "priority": "HIGH"
       },
       "FR-08": {
         "fr_id": "FR-08",
-        "status": "in_progress",
+        "status": "verified",
         "srs_section": "SAD.md",
         "code_files": [
-          "03-development/src/taskq_plus/cli/commands.py"
+          "03-development/src/taskq_plus/cli/commands.py",
+          "03-development/src/taskq_plus/cli/main.py",
+          "03-development/src/taskq_plus/observability/__init__.py",
+          "03-development/src/taskq_plus/observability/audit.py",
+          "03-development/src/taskq_plus/observability/export.py",
+          "03-development/src/taskq_plus/service/executor.py"
         ],
-        "test_files": [],
+        "test_files": [
+          "tests/test_fr08.py"
+        ],
         "sad_module": "—",
         "priority": "HIGH"
       }
