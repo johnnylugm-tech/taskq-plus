@@ -18,7 +18,7 @@ import importlib
 import os
 import re
 from dataclasses import dataclass, field
-from typing import Any, Iterable, List, Optional, Sequence, Union
+from typing import Any, Iterable, List, Sequence, Union
 
 
 # ---------------------------------------------------------------------------
@@ -81,11 +81,11 @@ class PluginFailure:
 class PluginDispatchResult:
     """Aggregate outcome of a single `dispatch()` call.
 
-    `disabled` is the list of plugin names newly disabled by THIS call
-    (a plugin is appended at most once when its 3rd consecutive failure
-    lands in the same call). `failures` is the list of caught exceptions
-    for this call — the caller turns each into a `plugin_error` audit
-    event (FR-08).
+    `disabled` is the list of every plugin whose `disabled` flag is set at
+    the END of this call (SPEC §3 FR-07 — callers want the run-wide
+    disabled set without sharing extra state). `failures` is the list of
+    caught exceptions for this call — the caller turns each into a
+    `plugin_error` audit event (FR-08).
     """
 
     disabled: List[str] = field(default_factory=list)
@@ -103,7 +103,7 @@ def _coerce_names(settings: Union[None, str, Sequence[str]]) -> List[str]:
     entries are dropped — `TASKQ_PLUGINS=",,,foo,,"` loads only `foo`.
     """
     if settings is None:
-        raw = os.environ.get("TASKQ_PLUGINS", "") or ""
+        raw = os.environ.get("TASKQ_PLUGINS", "")
         pieces: Iterable[str] = raw.split(",")
     elif isinstance(settings, str):
         pieces = settings.split(",")
@@ -160,16 +160,14 @@ def describe(plugins: Sequence[LoadedPlugin]) -> List[dict]:
     Hooks are returned in the canonical `pre_run, post_run` order so the
     `plugins list` rendering is stable across runs.
     """
-    described: List[dict] = []
-    for plugin in plugins:
-        described.append(
-            {
-                "name": plugin.name,
-                "hooks": list(plugin.hooks),
-                "status": plugin.status,
-            }
-        )
-    return described
+    return [
+        {
+            "name": plugin.name,
+            "hooks": list(plugin.hooks),
+            "status": plugin.status,
+        }
+        for plugin in plugins
+    ]
 
 
 def dispatch(hook: str, plugins: Sequence[LoadedPlugin], *args: Any) -> PluginDispatchResult:
@@ -209,9 +207,7 @@ def dispatch(hook: str, plugins: Sequence[LoadedPlugin], *args: Any) -> PluginDi
             )
             if plugin.failure_count >= MAX_CONSECUTIVE_FAILURES:
                 plugin.disabled = True
-    for plugin in plugins:
-        if plugin.disabled and plugin.name not in result.disabled:
-            result.disabled.append(plugin.name)
+    result.disabled = [p.name for p in plugins if p.disabled]
     return result
 
 
