@@ -24,6 +24,104 @@ test_inventory:
   fr_count: 34
   nfr_count: 29
 
+# Top-level keys required by harness validate-handoff --from-phase 1.
+# These mirror the per-FR and cross_cutting entries inside test_inventory:
+# below and exist so the handoff validator can locate per-FR test names
+# without descending into the detailed enumeration block.
+fr_tests:
+  FR-01:
+    service:
+      - test_fr01_a
+      - test_fr01_b
+      - test_fr01_c
+      - test_fr01_d
+  FR-02:
+    service:
+      - test_fr02_a
+      - test_fr02_b
+      - test_fr02_c
+      - test_fr02_d
+      - test_fr02_e
+  FR-03:
+    service:
+      - test_fr03_a
+      - test_fr03_b
+      - test_fr03_c
+      - test_fr03_d
+  FR-04:
+    service:
+      - test_fr04_a
+      - test_fr04_b
+      - test_fr04_c
+      - test_fr04_d
+  FR-05:
+    cli:
+      - test_fr05_a
+      - test_fr05_b
+      - test_fr05_c
+      - test_fr05_d
+  FR-06:
+    service:
+      - test_fr06_a
+      - test_fr06_b
+      - test_fr06_c
+      - test_fr06_d
+  FR-07:
+    service:
+      - test_fr07_a
+      - test_fr07_b
+      - test_fr07_c
+      - test_fr07_d
+      - test_fr07_e
+  FR-08:
+    observability:
+      - test_fr08_a
+      - test_fr08_b
+      - test_fr08_c
+      - test_fr08_d
+
+cross_cutting:
+  performance:
+    - test_nfr01_a
+    - test_nfr01_b
+  security:
+    - test_nfr02_a
+    - test_nfr02_b
+    - test_nfr02_c
+    - test_nfr02_d
+  storage:
+    - test_nfr03_a
+    - test_nfr03_b
+    - test_nfr03_c
+    - test_nfr03_d
+  observability:
+    - test_nfr04_a
+    - test_nfr04_b
+  documentation:
+    - test_nfr05_a
+  architecture:
+    - test_nfr06_a
+    - test_nfr06_b
+    - test_nfr06_c
+  license:
+    - test_nfr07_a
+    - test_nfr07_b
+    - test_nfr07_c
+  mutation:
+    - test_nfr08_a
+    - test_nfr08_b
+  quality:
+    - test_nfr09_a
+    - test_nfr09_b
+    - test_nfr09_c
+    - test_nfr11_a
+    - test_nfr11_b
+    - test_nfr11_c
+  integration:
+    - test_nfr10_a
+  verify_system:
+    - test_nfr12_a
+
   tests:
 
     # ─────────────────────────────────────────────────────────────────
@@ -957,3 +1055,102 @@ test_inventory:
       - "by_fr_total == total_test_cases"
       - "by_layer_total == total_test_cases"
       - "enumerated_tests_block_count == total_test_cases"
+
+  # ─────────────────────────────────────────────────────────────────
+  # P1 naming authority — per-FR test names (required by handoff validator).
+  # One entry per FR declared in SRS.md. Keys/values mirror the enumerated
+  # tests: block above; do not delete the detailed block when editing this map.
+  # ─────────────────────────────────────────────────────────────────
+  fr_tests:
+    FR-01:
+      service:
+        - test_fr01_a
+        - test_fr01_b
+        - test_fr01_c
+        - test_fr01_d
+    FR-02:
+      service:
+        - test_fr02_a
+        - test_fr02_b
+        - test_fr02_c
+        - test_fr02_d
+        - test_fr02_e
+    FR-03:
+      service:
+        - test_fr03_a
+        - test_fr03_b
+        - test_fr03_c
+        - test_fr03_d
+    FR-04:
+      service:
+        - test_fr04_a
+        - test_fr04_b
+        - test_fr04_c
+        - test_fr04_d
+    FR-05:
+      cli:
+        - test_fr05_a
+        - test_fr05_b
+        - test_fr05_c
+        - test_fr05_d
+    FR-06:
+      service:
+        - test_fr06_a
+        - test_fr06_b
+        - test_fr06_c
+        - test_fr06_d
+    FR-07:
+      service:
+        - test_fr07_a
+        - test_fr07_b
+        - test_fr07_c
+        - test_fr07_d
+        - test_fr07_e
+    FR-08:
+      observability:
+        - test_fr08_a
+        - test_fr08_b
+        - test_fr08_c
+        - test_fr08_d
+
+  cross_cutting:
+    performance:
+      - test_nfr01_a
+      - test_nfr01_b
+    security:
+      - test_nfr02_a
+      - test_nfr02_b
+      - test_nfr02_c
+      - test_nfr02_d
+    storage:
+      - test_nfr03_a
+      - test_nfr03_b
+      - test_nfr03_c
+      - test_nfr03_d
+    observability:
+      - test_nfr04_a
+      - test_nfr04_b
+    documentation:
+      - test_nfr05_a
+    architecture:
+      - test_nfr06_a
+      - test_nfr06_b
+      - test_nfr06_c
+    license:
+      - test_nfr07_a
+      - test_nfr07_b
+      - test_nfr07_c
+    mutation:
+      - test_nfr08_a
+      - test_nfr08_b
+    quality:
+      - test_nfr09_a
+      - test_nfr09_b
+      - test_nfr09_c
+      - test_nfr11_a
+      - test_nfr11_b
+      - test_nfr11_c
+    integration:
+      - test_nfr10_a
+    verify_system:
+      - test_nfr12_a
