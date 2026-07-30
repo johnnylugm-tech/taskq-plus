@@ -14,14 +14,14 @@ Citations:
 
 from __future__ import annotations
 
-import datetime as _dt
-import os as _os
+import datetime
+import os
 import shlex
 import subprocess
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, TypeVar
 
 from taskq_plus.storage.task_store import (
     find_by_id,
@@ -46,7 +46,7 @@ DEFAULT_TIMEOUT_S = 30.0
 # Default ThreadPoolExecutor size when TASKQ_MAX_WORKERS is unset.
 DEFAULT_MAX_WORKERS = 4
 
-UTC = _dt.timezone.utc
+UTC = datetime.timezone.utc
 
 
 # ---------------------------------------------------------------------------
@@ -59,13 +59,32 @@ _store_lock = threading.Lock()
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+T = TypeVar("T")
+
+
+def _read_env(name: str, parse: Callable[[str], T], default: T) -> T:
+    """Read env var `name`; return `default` when unset/empty/unparseable.
+
+    [FR-02]
+    Citations:
+      - SPEC.md §3 FR-02 (TASKQ_TASK_TIMEOUT / TASKQ_MAX_WORKERS).
+    """
+    raw = os.environ.get(name)
+    if not raw:
+        return default
+    try:
+        return parse(raw)
+    except ValueError:
+        return default
+
+
 def _now_iso() -> str:
     """UTC ISO-8601 timestamp with a trailing 'Z'.
 
     [FR-02]
     Citations: SPEC.md §3 FR-02 (finished_at field).
     """
-    return _dt.datetime.now(UTC).isoformat().replace("+00:00", "Z")
+    return datetime.datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 def _truncate_tail(value: Any, bound: int = TAIL_BOUND) -> str:
@@ -106,13 +125,7 @@ def _resolve_timeout() -> float:
     [FR-02]
     Citations: SPEC.md §3 FR-02 (subprocess.run timeout).
     """
-    raw = _os.environ.get("TASKQ_TASK_TIMEOUT")
-    if raw is None or raw == "":
-        return DEFAULT_TIMEOUT_S
-    try:
-        return float(raw)
-    except ValueError:
-        return DEFAULT_TIMEOUT_S
+    return _read_env("TASKQ_TASK_TIMEOUT", float, DEFAULT_TIMEOUT_S)
 
 
 def _resolve_max_workers() -> int:
@@ -121,13 +134,7 @@ def _resolve_max_workers() -> int:
     [FR-02]
     Citations: SPEC.md §3 FR-02 (ThreadPoolExecutor max_workers).
     """
-    raw = _os.environ.get("TASKQ_MAX_WORKERS")
-    if raw is None or raw == "":
-        return DEFAULT_MAX_WORKERS
-    try:
-        return int(raw)
-    except ValueError:
-        return DEFAULT_MAX_WORKERS
+    return _read_env("TASKQ_MAX_WORKERS", int, DEFAULT_MAX_WORKERS)
 
 
 def _topological_levels(tasks: List[Dict[str, Any]]) -> List[List[str]]:
@@ -141,24 +148,50 @@ def _topological_levels(tasks: List[Dict[str, Any]]) -> List[List[str]]:
       - SPEC.md §3 FR-02 (DAG topological order).
       - SPEC.md §3 FR-06 (DAG ordering primitive).
     """
-    by_id = {t.get("id"): t for t in tasks}
+    known_ids = {t.get("id") for t in tasks}
     remaining: List[Dict[str, Any]] = list(tasks)
-    done: set = set()
+    satisfied: set = set()
     levels: List[List[str]] = []
     while remaining:
         level = [
             t.get("id")
             for t in remaining
-            if all(dep in done or dep not in by_id for dep in (t.get("depends_on") or []))
+            if all(
+                dep in satisfied or dep not in known_ids
+                for dep in (t.get("depends_on") or [])
+            )
         ]
         if not level:
             # Cycle or unsatisfiable deps — emit remaining as a final level.
             levels.append([t.get("id") for t in remaining])
             break
         levels.append(level)
-        done.update(level)
-        remaining = [t for t in remaining if t.get("id") not in done]
+        satisfied.update(level)
+        remaining = [t for t in remaining if t.get("id") not in satisfied]
     return levels
+
+
+def _build_result(
+    *,
+    status: str,
+    exit_code: Optional[int],
+    stdout: Any,
+    stderr: Any,
+    duration_ms: int,
+) -> Dict[str, Any]:
+    """Assemble the standard task-result dict written to the store.
+
+    [FR-02]
+    Citations: SPEC.md §3 FR-02 (result fields; tail bounded to last 2000 chars).
+    """
+    return {
+        "status": status,
+        "exit_code": exit_code,
+        "stdout_tail": _truncate_tail(stdout),
+        "stderr_tail": _truncate_tail(stderr),
+        "duration_ms": duration_ms,
+        "finished_at": _now_iso(),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -180,12 +213,11 @@ def execute_task(task_id: str) -> Optional[Dict[str, Any]]:
     command = rec.get("command") or ""
     _set_status(task_id, {"status": "running"})
 
-    timeout_s = _resolve_timeout()
     started = time.monotonic()
+    timeout_s = _resolve_timeout()
     try:
-        argv = shlex.split(command)
         proc = subprocess.run(
-            argv,
+            shlex.split(command),
             capture_output=True,
             text=True,
             timeout=timeout_s,
@@ -193,32 +225,22 @@ def execute_task(task_id: str) -> Optional[Dict[str, Any]]:
             shell=False,
         )
     except subprocess.TimeoutExpired as exc:
-        duration_ms = int((time.monotonic() - started) * 1000)
-        stdout_tail = _truncate_tail(exc.stdout)
-        stderr_tail = _truncate_tail(exc.stderr)
-        finished_at = _now_iso()
-        result = {
-            "status": "timeout",
-            "exit_code": None,
-            "stdout_tail": stdout_tail,
-            "stderr_tail": stderr_tail,
-            "duration_ms": duration_ms,
-            "finished_at": finished_at,
-        }
-        _set_status(task_id, result)
-        return result
+        result = _build_result(
+            status="timeout",
+            exit_code=None,
+            stdout=exc.stdout,
+            stderr=exc.stderr,
+            duration_ms=int((time.monotonic() - started) * 1000),
+        )
+    else:
+        result = _build_result(
+            status="done" if proc.returncode == 0 else "failed",
+            exit_code=proc.returncode,
+            stdout=proc.stdout,
+            stderr=proc.stderr,
+            duration_ms=int((time.monotonic() - started) * 1000),
+        )
 
-    duration_ms = int((time.monotonic() - started) * 1000)
-    exit_code = proc.returncode
-    status = "done" if exit_code == 0 else "failed"
-    result = {
-        "status": status,
-        "exit_code": exit_code,
-        "stdout_tail": _truncate_tail(proc.stdout),
-        "stderr_tail": _truncate_tail(proc.stderr),
-        "duration_ms": duration_ms,
-        "finished_at": _now_iso(),
-    }
     _set_status(task_id, result)
     return result
 
