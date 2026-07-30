@@ -339,12 +339,16 @@ def _hook_calls(journal):
     ],
 )
 def test_fr07_a(taskq_home, plugin_name, plugin_name_expected_rejected,
-                monkeypatch):
+                monkeypatch):  # NFR-02, NFR-09, NFR-10
     """`TASKQ_PLUGINS="<path|url>" plugins list` → exit 6 (SPEC §8 #12, T-05).
 
     Rows 1 + 2 of TEST_SPEC.md §FR-07. Path forms and URL forms are NOT
     installed module names, so `PLUGIN_NAME_RE` must reject them BEFORE any
     import is attempted — the whole point of the FR-07 allowlist iron rule.
+
+    NFR-02: allowlist regex + path/URL rejection (the FR-07 security gate).
+    NFR-09: real exit code (6) asserted both in-process and out-of-process.
+    NFR-10: out-of-process CLI invocation is the user-facing entry point.
     """
     # rule_id: AC7-name-rejection-flag (rows 1, 2)
     assert plugin_name_expected_rejected == "true"
@@ -395,12 +399,17 @@ def test_fr07_a(taskq_home, plugin_name, plugin_name_expected_rejected,
 # Row 3 — AC-FR-07.b: a raising hook must not interrupt task execution;
 # a `plugin_error` audit event is recorded and the task still completes.
 # ===========================================================================
-def test_fr07_b(taskq_home, install_plugin, plugin_dir, plugin_log):
+def test_fr07_b(taskq_home, install_plugin, plugin_dir, plugin_log):  # NFR-03, NFR-10, NFR-09
     """pre_run raises → task completes; audit journal gets `plugin_error`.
 
     Row 3 of TEST_SPEC.md §FR-07 (SPEC §8 #13).
     Inputs: hook_name="pre_run", plugin_raises_in_hook="true",
             task_should_complete="true", audit_event_kind="plugin_error".
+
+    NFR-03: exception isolation — plugin code's exception is caught (NOT
+            bare-except-pass, NOT KeyboardInterrupt swallow); task continues.
+    NFR-10: out-of-process end-to-end submit → run → status flow.
+    NFR-09: real exit code (0) and real audit event, no skips/stubs.
     """
     hook_name = "pre_run"
     plugin_raises_in_hook = "true"
@@ -479,7 +488,7 @@ def test_fr07_b(taskq_home, install_plugin, plugin_dir, plugin_log):
 # Row 4 — AC-FR-07.c: 3 consecutive failures inside ONE run disable the plugin.
 # state_mode = isolate_per_test → fresh load_plugins()/dispatch state here.
 # ===========================================================================
-def test_fr07_c(taskq_home, install_plugin, plugin_log):
+def test_fr07_c(taskq_home, install_plugin, plugin_log):  # NFR-03, NFR-10
     """A plugin failing 3 consecutive times in one run is disabled for that run.
 
     Row 4 of TEST_SPEC.md §FR-07 (DERIVED from SPEC §3 FR-07
@@ -487,6 +496,11 @@ def test_fr07_c(taskq_home, install_plugin, plugin_log):
     Inputs: consecutive_failure_count="3",
             expected_disabled_for_this_run="true",
             state_mode="isolate_per_test".
+
+    NFR-03: dispatch state survives an isolated run (failure counter lives
+            inside the dispatch loop, NOT a module global — isolation
+            contract per SPEC §3 FR-07 + §8 NFR-03).
+    NFR-10: in-process dispatch loop is the integration seam exercised here.
     """
     consecutive_failure_count = "3"
     expected_disabled_for_this_run = "true"
@@ -543,7 +557,7 @@ def test_fr07_c(taskq_home, install_plugin, plugin_log):
 # ===========================================================================
 # Row 5 — AC-FR-07.d: `plugins list` prints module name, hooks, load status.
 # ===========================================================================
-def test_fr07_d(taskq_home, install_plugin, plugin_dir, plugin_log):
+def test_fr07_d(taskq_home, install_plugin, plugin_dir, plugin_log):  # NFR-10, NFR-05
     """`plugins list` reports each plugin's module name, hooks and load status.
 
     Row 5 of TEST_SPEC.md §FR-07 (DERIVED from SPEC §3 FR-07
@@ -632,13 +646,15 @@ def test_fr07_d(taskq_home, install_plugin, plugin_dir, plugin_log):
 # ===========================================================================
 # Row 6 — AC-FR-07.e / NFR-02 / SEC: no `eval(` or `exec(` anywhere in src.
 # ===========================================================================
-def test_fr07_e():
+def test_fr07_e():  # NFR-02
     """`grep -rn "eval(\\|exec(" 03-development/src/` must return 0 hits.
 
     Row 6 of TEST_SPEC.md §FR-07 (NFR-02 / SPEC §8 #15). The FR-07 loader is
     only safe if dynamic-code execution is absent from the whole source tree,
     so this asserts on the grep result over the SAB-declared src root — not
     just over `service/plugins.py`.
+
+    NFR-02: cross-cutting grep assertion (zero eval(/exec( hits under src/).
     """
     grep_pattern = r"eval(\|exec("
     src_dir_relpath = "03-development/src/"
