@@ -1,14 +1,17 @@
 {
   "state": "RUNNING",
-  "current_phase": 1,
+  "current_phase": 2,
   "last_gate": null,
   "last_fr": null,
-  "last_update": "2026-07-29T17:30:35.263021+00:00",
+  "last_update": "2026-07-30T08:40:16.722515+00:00",
   "language": "python",
   "phase_completed": {
     "1": {
       "sha": "496fd986091c8bb38d52afd141be6c385db3a960",
       "timestamp": "2026-07-30T08:39:53.233038+00:00"
     }
-  }
+  },
+  "test_inventory_checksum": "44f2e01fd5e2dec50ae82b7795d68498e64a55d6085c6d7ae4bc593ce5b7da14",
+  "phase_truth_passed": true,
+  "last_milestone_command": "advance-phase --completed-phase 1"
 }
