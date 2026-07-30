@@ -1,6 +1,6 @@
 {
   "gate": 1,
-  "phase": 3,
+  "phase": 4,
   "fr_id": "FR-08",
   "overall_score": 100.0,
   "quality_complete": true,
@@ -14,7 +14,7 @@
     "type_safety": {
       "score": 100.0,
       "threshold": 100,
-      "tool_evidence": "{\"version\": \"1.1.409\", \"time\": \"1785429392152\", \"generalDiagnostics\": [], \"summary\": {\"filesAnalyzed\": 20, \"errorCount\": 0, \"warningCount\": 0, \"informationCount\": 0, \"timeInSec\": 0.676}}"
+      "tool_evidence": "{\"version\":\"1.1.409\",\"generalDiagnostics\":[],\"summary\":{\"filesAnalyzed\":23,\"errorCount\":0,\"warningCount\":0,\"informationCount\":0,\"timeInSec\":0.725}}"
     },
     "test_coverage": {
       "score": 100.0,
@@ -22,10 +22,10 @@
       "tests_passed": 15,
       "tests_failed": 0,
       "tests_skipped": 0,
-      "tool_evidence": "============================= test session starts ==============================\nplatform darwin -- Python 3.11.15, pytest-8.4.2, pluggy-1.6.0\nrootdir: /Users/johnny/projects/taskq-plus\nplugins: benchmark-5.2.3, cov-7.1.0, anyio-4.14.2\ncollected 15 items\n\n03-development/tests/test_fr08.py ...............                        [100%]\n\n============================== 15 passed in 1.32s ==============================\nCoverage: 100% on audit.py (61/61 lines) and export.py (93/93 lines); spec_cov 6/6."
+      "tool_evidence": "============================== 15 passed in 1.45s ============================== {\"meta\":{\"format\":3,\"version\":\"7.15.2\"},\"files\":{\"03-development/src/taskq_plus/observability/audit.py\":{\"summary\":{\"percent_covered\":100.0,\"missing_lines\":0,\"num_statements\":88}},\"03-development/src/taskq_plus/observability/export.py\":{\"summary\":{\"percent_covered\":100.0,\"missing_lines\":0,\"num_statements\":66}}},\"totals\":{\"covered_lines\":154,\"num_statements\":154,\"percent_covered\":100.0,\"percent_covered_display\":\"100\",\"missing_lines\":0}}"
     }
   },
-  "enforcer_sha": "0649bdbe353cb56e9263143fb8886c73ca163e62",
+  "enforcer_sha": "0d9aa16f8ee8c25c4d7f8a9b3cb88dace506e2c9",
   "composite_score": 100.0,
   "verdict": "PASS",
   "passed": true

@@ -1,15 +1,15 @@
 # Phase 4 STAGE_PASS
 
-Generated: 2026-07-30 18:38 UTC
+Generated: 2026-07-30 18:40 UTC
 
 ## Gate Score
-Gate 1 Composite Score: **99.2**
+Gate 1 Composite Score: **96.11**
 
 ## Quality Status
-quality_complete: **True**
+quality_complete: **False**
 
 ## Deliverables
 Phase 4 deliverables verified by PhaseArtifactRegistry.
 
 ## Summary
-Phase 4 exit gate PASS.
+Phase 4 exit gate FAIL.
