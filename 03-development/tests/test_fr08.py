@@ -156,9 +156,11 @@ from taskq_plus.observability.audit import (  # noqa: E402,F401
     EVENT_TYPES,
     AuditLogger,
     audit_log_path,
+    current_logger,
     new_correlation_id,
     read_entries,
     redact_text,
+    set_current_logger,
 )
 from taskq_plus.observability.export import (  # noqa: E402,F401
     EXPORT_FIELDS,
@@ -645,3 +647,239 @@ def test_fr08_d(taskq_home):  # NFR-04, NFR-09
     assert export_proc.stdout.count(secret_pattern_in_command) == 0, (
         "export must emit redacted records (NFR-04)"
     )
+
+
+# ===========================================================================
+# Coverage-extension tests — drive every line in
+# `observability/audit.py` and `observability/export.py`. These cover the
+# remaining branches that the four spec tests do not exercise:
+#
+#   audit.py
+#     line 107 — `audit_log_path` default fallback when $TASKQ_AUDIT_LOG unset
+#     line 248 — `current_logger` returns the module-global default logger
+#
+#   export.py
+#     line  55 — `_redact_leaf` tuple branch
+#     line 148 — `export_tasks` rejects an unknown format
+#     line 167 — `parse_export(json)` rejects a non-list payload
+#     line 179 — `parse_export(csv)` returns [] on empty input
+#     line 183 — `parse_export(csv)` skips an all-empty row
+#     line 192 — `parse_export(md)` skips a non-table line
+#     line 203 — `parse_export` rejects an unknown format
+#
+# Each test stays inside the same fresh-home contract as the spec tests:
+# every test owns its own `$TASKQ_HOME` / `$TASKQ_AUDIT_LOG`.
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+# Coverage: audit.py line 107 — default fallback when `$TASKQ_AUDIT_LOG` is
+# unset, the path must default to `$TASKQ_HOME/audit.jsonl` (SPEC.md#L166).
+# ---------------------------------------------------------------------------
+def test_audit_log_path_default_fallback(taskq_home, monkeypatch):
+    """`audit_log_path()` honours the env-var precedence documented in SPEC §5.1."""
+    monkeypatch.delenv(AUDIT_LOG_VAR, raising=False)
+    expected = taskq_home / "audit.jsonl"
+    assert audit_log_path() == expected, (
+        f"audit_log_path() must default to $TASKQ_HOME/audit.jsonl "
+        f"when $TASKQ_AUDIT_LOG is unset, got {audit_log_path()!r}"
+    )
+    # The default-only branch is the SAME branch the env-override path took
+    # for the rest of the suite — re-confirm the override precedence.
+    monkeypatch.setenv(AUDIT_LOG_VAR, str(expected))
+    assert audit_log_path() == expected
+
+
+# ---------------------------------------------------------------------------
+# Coverage: audit.py line 248 — `current_logger()` returns the module-global
+# logger installed at import time. Also exercises `set_current_logger` so the
+# per-invocation contract (SPEC.md#L168) is observable.
+# ---------------------------------------------------------------------------
+def test_current_logger_round_trip(taskq_home):
+    """`current_logger()` returns the module-global writer; `set_current_logger` swaps it."""
+    baseline = current_logger()
+    assert isinstance(baseline, AuditLogger), (
+        "current_logger() must return an AuditLogger instance"
+    )
+    assert HEX8_RE.match(baseline.correlation_id), (
+        "the module-global logger must carry a valid 8-hex correlation_id"
+    )
+
+    # Swap the invocation-scoped logger; current_logger() must surface it.
+    pinned = AuditLogger(correlation_id=CORRELATION_ID_TOKEN)
+    set_current_logger(pinned)
+    assert current_logger() is pinned, (
+        "set_current_logger() must install the logger that current_logger() returns"
+    )
+    assert current_logger().correlation_id == CORRELATION_ID_TOKEN
+
+    # The pinned logger must write through the same journal the CLI uses
+    # (same path resolution via the env).
+    current_logger().emit("submit", task_id="deadbeef", detail={"attempt": 1})
+    entries = _journal_entries(taskq_home)
+    assert len(entries) == 1
+    assert entries[0]["correlation_id"] == CORRELATION_ID_TOKEN
+
+
+# ---------------------------------------------------------------------------
+# Coverage: export.py line 55 — `_redact_leaf` tuple branch. A tuple value
+# in a non-`depends_on` field (e.g. a `command` slot supplied as a tuple)
+# must be redacted just like a list — NFR-04 has no opinion on container
+# type, only on string leaves.
+# ---------------------------------------------------------------------------
+def test_export_redact_tuple_branch(taskq_home):
+    """NFR-04 redaction must recurse into tuple values too, not just lists."""
+    secret = SECRET_TOKEN
+    # `command` is normally a string, but `_normalise_for_export` delegates to
+    # `_redact_leaf` for every non-`depends_on` field, so a tuple value here
+    # exercises the tuple branch.
+    tasks = [
+        {
+            "id": "deadbeef",
+            "command": ("echo hi", secret, "echo done"),
+            "name": "tuple-task",
+            "status": "pending",
+            "created_at": "2026-07-30T00:00:00Z",
+            "depends_on": [],
+        }
+    ]
+    body = export_tasks(tasks, "json")
+    assert secret not in body, (
+        f"tuple branch must redact nested secrets, body={body!r}"
+    )
+    assert "[REDACTED]" in body, (
+        "the redacted tuple element must surface as `[REDACTED]` in the JSON"
+    )
+    # Round-trip must agree with the cross-format invariant.
+    records = parse_export(body, "json")
+    assert len(records) == 1
+    decoded_command = records[0]["command"]
+    assert secret not in str(decoded_command), (
+        "round-trip must NOT reintroduce the secret after JSON parse"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Coverage: export.py line 148 — `export_tasks` raises ValueError when
+# `fmt` is not one of `EXPORT_FORMATS`. The SAB-bound module is the public
+# surface; callers must get a loud failure, not silent coercion.
+# ---------------------------------------------------------------------------
+def test_export_tasks_unknown_format_raises(taskq_home):
+    """`export_tasks` must reject any fmt outside `EXPORT_FORMATS` (no silent coercion)."""
+    tasks = [
+        {
+            "id": "deadbeef",
+            "command": "echo hi",
+            "name": "n",
+            "status": "pending",
+            "created_at": "2026-07-30T00:00:00Z",
+            "depends_on": [],
+        }
+    ]
+    with pytest.raises(ValueError, match="unsupported export format"):
+        export_tasks(tasks, "xml")
+    # The lowercase-normalisation branch — uppercase must also raise.
+    with pytest.raises(ValueError, match="unsupported export format"):
+        export_tasks(tasks, "YAML")
+
+
+# ---------------------------------------------------------------------------
+# Coverage: export.py line 167 — `parse_export(json)` raises ValueError
+# when the payload is NOT a JSON array (SPEC §3 FR-08 mandates a single
+# JSON ARRAY).
+# ---------------------------------------------------------------------------
+def test_parse_export_json_not_a_list_raises(taskq_home):
+    """`parse_export(json)` must reject an object/dict payload with ValueError."""
+    not_a_list = '{"id":"x","command":"echo hi"}'   # a JSON object, not an array
+    with pytest.raises(ValueError, match="must be a list"):
+        parse_export(not_a_list, "json")
+    # Scalar JSON is also not a list.
+    with pytest.raises(ValueError, match="must be a list"):
+        parse_export('"just a string"', "json")
+
+
+# ---------------------------------------------------------------------------
+# Coverage: export.py line 179 — `parse_export(csv)` returns [] when the
+# input has no rows at all. The empty-journal contract is mirrored here:
+# no header, no rows, no records.
+# ---------------------------------------------------------------------------
+def test_parse_export_csv_empty_input(taskq_home):
+    """Empty CSV content must round-trip to an empty record list."""
+    assert parse_export("", "csv") == []
+    # Whitespace-only input is also "no rows".
+    assert parse_export("\n\n  \n", "csv") == []
+    # A header-only CSV has a row (the header) but no data rows — `parse_export`
+    # must drop the header and return [].
+    header_only = ",".join(EXPORT_FIELDS) + "\n"
+    assert parse_export(header_only, "csv") == []
+
+
+# ---------------------------------------------------------------------------
+# Coverage: export.py line 183 — `parse_export(csv)` skips rows whose cells
+# are all empty/whitespace. (The CSV writer never emits such rows, but
+# hand-edited or concatenated inputs do — the parser must be tolerant.)
+# ---------------------------------------------------------------------------
+def test_parse_export_csv_skips_empty_rows(taskq_home):
+    """`parse_export(csv)` must drop rows where every cell is blank."""
+    header = ",".join(EXPORT_FIELDS)
+    blank_row = ",".join([""] * len(EXPORT_FIELDS))
+    data_row = ",".join(
+        [
+            "deadbeef",  # id
+            "echo hi",  # command
+            "name",  # name
+            "pending",  # status
+            "2026-07-30T00:00:00Z",  # created_at
+            "",  # depends_on
+        ]
+    )
+    body = "\n".join([header, blank_row, data_row, "   ,   ,   ,   ,   ,   "]) + "\n"
+    records = parse_export(body, "csv")
+    assert len(records) == 1, (
+        f"blank rows must be skipped, got {records!r}"
+    )
+    assert records[0]["id"] == "deadbeef"
+    assert records[0]["command"] == "echo hi"
+
+
+# ---------------------------------------------------------------------------
+# Coverage: export.py line 192 — `parse_export(md)` skips lines that are
+# not a pipe-table row. (Markdown files often carry prose above/below the
+# table; the parser must not crash on a stray heading or paragraph.)
+# ---------------------------------------------------------------------------
+def test_parse_export_md_skips_non_table_lines(taskq_home):
+    """`parse_export(md)` must ignore headings, paragraphs, and blank lines."""
+    body = (
+        "# Tasks\n"
+        "\n"
+        "A short preamble that is not a table.\n"
+        "\n"
+        "| " + " | ".join(EXPORT_FIELDS) + " |\n"
+        "|" + "|".join("---" for _ in EXPORT_FIELDS) + "|\n"
+        "| deadbeef | echo hi | name | pending | 2026-07-30T00:00:00Z |  |\n"
+        "\n"
+        "Trailing prose that should not be parsed.\n"
+    )
+    records = parse_export(body, "md")
+    assert len(records) == 1, (
+        f"only the one table row must round-trip, got {records!r}"
+    )
+    assert records[0]["id"] == "deadbeef"
+    assert records[0]["command"] == "echo hi"
+    # A second table row in the same body increases the record count to 2.
+    body_with_two = body + "| cafebabe | echo bye | name2 | done | ts | x |\n"
+    records_two = parse_export(body_with_two, "md")
+    assert len(records_two) == 2
+
+
+# ---------------------------------------------------------------------------
+# Coverage: export.py line 203 — `parse_export` raises ValueError on an
+# unknown `fmt`, mirroring the writer-side check at line 148.
+# ---------------------------------------------------------------------------
+def test_parse_export_unknown_format_raises(taskq_home):
+    """`parse_export` must reject any fmt outside `EXPORT_FORMATS`."""
+    with pytest.raises(ValueError, match="unsupported export format"):
+        parse_export("anything", "xml")
+    # The lowercase-normalisation branch — uppercase must also raise.
+    with pytest.raises(ValueError, match="unsupported export format"):
+        parse_export("anything", "YAML")
