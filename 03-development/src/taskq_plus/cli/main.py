@@ -385,7 +385,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         return int(exc.exit_code or EXIT_INTERNAL_ERROR)
     except SystemExit as exc:
         return int(exc.code if isinstance(exc.code, int) else EXIT_INTERNAL_ERROR)
-    except Exception as exc:  # pragma: no cover — last-resort safety net
+    except Exception as exc:  # last-resort safety net — covered by test_fr05 / test_fr06
         _emit_error(f"internal error: {exc}")
         return EXIT_INTERNAL_ERROR
 

@@ -956,3 +956,103 @@ class TestDagCliInProcess:
                     f"FR-06 depth-cap stderr must include cap "
                     f"{MAX_DAG_DEPTH}, got {err!r}"
                 )
+
+    def test_main_last_resort_exception_returns_exit_1(self, monkeypatch, taskq_home):
+        """cli.main.main's bare `except Exception` branch must surface exit 1.
+
+        NFR-03 / NFR-05: the last-resort safety net in `cli/main.py` catches
+        any uncaught non-click exception and returns `EXIT_INTERNAL_ERROR`
+        (= 1). Driving click to raise a bare RuntimeError exercises that
+        branch so coverage can measure it (no `# pragma: no cover` allowed).
+        """
+        from taskq_plus.cli import main as cli_main_mod
+
+        class _Boom(RuntimeError):
+            pass
+
+        def _boom(*args, **kwargs):
+            raise _Boom("simulated internal error")
+
+        monkeypatch.setattr(cli_main_mod.cli, "main", _boom)
+        code, out, err = _main_capture(["status"])
+        assert code == 1, (
+            f"last-resort exception must surface exit 1, got {code}; "
+            f"stderr={err!r}"
+        )
+        assert "internal error" in err.lower(), (
+            f"last-resort stderr must mention 'internal error', got {err!r}"
+        )
+
+    def test_submit_cycle_returns_exit_5_with_path(self, taskq_home):
+        """AC-FR-06.b: cycle in store surfaces as exit 5 with cycle path on stderr."""
+        from taskq_plus.storage.task_store import save_tasks
+
+        cyclic = [
+            {"id": "x", "command": "echo x", "status": "pending", "depends_on": ["z"]},
+            {"id": "y", "command": "echo y", "status": "pending", "depends_on": ["x"]},
+            {"id": "z", "command": "echo z", "status": "pending", "depends_on": ["y"]},
+        ]
+        save_tasks(cyclic)
+
+        code, out, err = _main_capture(["submit", "echo new", "--after", "x"])
+        assert code == 5, (
+            f"submit into cyclic store must exit 5, got {code}; stderr={err!r}"
+        )
+        assert "->" in err, (
+            f"cycle stderr must contain '->' arrows, got stderr={err!r}"
+        )
+
+    def test_submit_unknown_after_returns_exit_2(self, taskq_home):
+        """Submitting with a --after referencing an unknown task exits 2."""
+        code, out, err = _main_capture(
+            ["submit", "echo new", "--after", "deadbeef"]
+        )
+        assert code == 2, (
+            f"unknown --after id must exit 2, got {code}; stderr={err!r}"
+        )
+        assert "deadbeef" in err or "does not exist" in err.lower(), (
+            f"unknown --after stderr must mention the missing id, got stderr={err!r}"
+        )
+
+    def test_submit_validates_command_shape(self, taskq_home):
+        """Submitting with an empty command exits 2 (validation)."""
+        code, out, err = _main_capture(["submit", ""])
+        assert code == 2, (
+            f"empty command must exit 2, got {code}; stderr={err!r}"
+        )
+
+    def test_submit_with_multiple_after_creates_chain(self, taskq_home):
+        """Submitting with multiple --after builds a multi-dep task."""
+        # First create two roots.
+        code_a, out_a, _ = _main_capture(["submit", "echo r0"])
+        assert code_a == 0
+        id_a = out_a.strip().splitlines()[-1].strip()
+        code_b, out_b, _ = _main_capture(["submit", "echo r1"])
+        assert code_b == 0
+        id_b = out_b.strip().splitlines()[-1].strip()
+        # Submit a child with both deps.
+        argv = ["submit", "echo child", "--after", id_a, "--after", id_b]
+        code_c, out_c, err_c = _main_capture(argv)
+        assert code_c == 0, (
+            f"submit multi-dep child must succeed, got exit={code_c} "
+            f"stderr={err_c!r}"
+        )
+        # The child should be in the store with both deps.
+        from taskq_plus.storage.task_store import load_tasks
+        tasks = load_tasks()
+        child = next((t for t in tasks if t.get("id") == out_c.strip().splitlines()[-1].strip()), None)
+        assert child is not None, "child task must be persisted"
+        deps = set(child.get("depends_on") or [])
+        assert deps == {id_a, id_b}, f"expected deps {{id_a,id_b}}, got {sorted(deps)}"
+
+    def test_submit_json_flag_emits_single_line_json(self, taskq_home):
+        """`submit --json` emits a single line of JSON (NFR-10)."""
+        code, out, err = _main_capture(["submit", "echo json", "--json"])
+        assert code == 0, (
+            f"--json submit must succeed, got exit={code} stderr={err!r}"
+        )
+        # Output must be a single line of JSON (no embedded newlines).
+        json_lines = [ln for ln in out.splitlines() if ln.strip().startswith("{")]
+        assert len(json_lines) == 1, (
+            f"--json output must be exactly one line, got {out!r}"
+        )
