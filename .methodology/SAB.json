@@ -59,7 +59,8 @@
         },
         {
           "name": "taskq_plus.service.plugins"
-        }
+        },
+        "taskq_plus.service"
       ],
       "allowed_dependencies": [
         "storage",
