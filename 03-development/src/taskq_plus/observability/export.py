@@ -77,6 +77,25 @@ def _stringify(value: Any) -> str:
     return str(value)
 
 
+def _cell_values(row: Mapping[str, Any]) -> list[str]:
+    """Return the stringified EXPORT_FIELDS cells of `row`, in schema order."""
+    return [_stringify(row.get(field, "")) for field in EXPORT_FIELDS]
+
+
+def _row_to_dict(cells: Sequence[str]) -> dict[str, Any]:
+    """Project a CSV/MD cell list onto EXPORT_FIELDS, padding missing cells.
+
+    Used by both the CSV and MD branches of `parse_export`. The CSV writer
+    and the MD writer both emit one cell per EXPORT_FIELDS entry, so an
+    under-supplied input is a malformed document — the `""` default keeps
+    the cross-format invariant intact rather than raising mid-parse.
+    """
+    return {
+        field: (cells[index] if index < len(cells) else "")
+        for index, field in enumerate(EXPORT_FIELDS)
+    }
+
+
 # ---------------------------------------------------------------------------
 # Renderers — one per format.  Each accepts the redacted dict sequence and
 # returns a single body string.
@@ -92,7 +111,7 @@ def _render_csv(rows: Sequence[Mapping[str, Any]]) -> str:
     writer = csv.writer(buf)
     writer.writerow(list(EXPORT_FIELDS))
     for row in rows:
-        writer.writerow([_stringify(row.get(field, "")) for field in EXPORT_FIELDS])
+        writer.writerow(_cell_values(row))
     return buf.getvalue()
 
 
@@ -100,10 +119,7 @@ def _render_md(rows: Sequence[Mapping[str, Any]]) -> str:
     """Emit a GitHub-flavoured Markdown pipe table."""
     header = "| " + " | ".join(EXPORT_FIELDS) + " |"
     separator = "|" + "|".join("---" for _ in EXPORT_FIELDS) + "|"
-    body_lines = [
-        "| " + " | ".join(_stringify(row.get(field, "")) for field in EXPORT_FIELDS) + " |"
-        for row in rows
-    ]
+    body_lines = ["| " + " | ".join(_cell_values(row)) + " |" for row in rows]
     return "\n".join([header, separator, *body_lines]) + "\n"
 
 
@@ -165,12 +181,7 @@ def parse_export(content: str, fmt: str) -> List[dict[str, Any]]:
         for row in rows[1:]:
             if not any(cell.strip() for cell in row):
                 continue
-            out.append(
-                {
-                    field: (row[index] if index < len(row) else "")
-                    for index, field in enumerate(EXPORT_FIELDS)
-                }
-            )
+            out.append(_row_to_dict(row))
         return out
     if f == "md":
         out = []
@@ -187,12 +198,7 @@ def parse_export(content: str, fmt: str) -> List[dict[str, Any]]:
             # Skip the separator row (---|---) and any all-empty lines.
             if cells and all(set(c) <= set("-: ") for c in cells):
                 continue
-            out.append(
-                {
-                    field: (cells[index] if index < len(cells) else "")
-                    for index, field in enumerate(EXPORT_FIELDS)
-                }
-            )
+            out.append(_row_to_dict(cells))
         return out
     raise ValueError(f"unsupported export format {fmt!r}")
 
