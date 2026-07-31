@@ -1185,3 +1185,37 @@ def test_taskq_executor_run_with_retry_records_success(taskq_home, monkeypatch):
     counter = record.get("consecutive_failures", record.get("failure_count"))
     assert counter == 0, f"success must zero the failure counter, got {record!r}"
     assert record.get("state") == STATE_CLOSED
+
+
+# ---- executor.py — branch coverage: _set_status when task_id is missing ---
+def test_taskq_executor_set_status_branch_when_id_missing(taskq_home):
+    """_set_status on a non-existent task_id falls through to save_tasks (no-op).
+
+    Coverage pin for executor.py L148->L152 — the for-loop in _set_status
+    completes without breaking when no task matches the supplied id; the
+    subsequent save_tasks() call still runs and persists the unchanged list.
+    """
+    from taskq_plus.service.executor import _set_status
+    from taskq_plus.storage.task_store import load_tasks
+
+    # Seed one task but target a different id so the loop never breaks.
+    _seed_pending(taskq_home, task_id="present", command="echo hi")
+
+    prior = _with_home(taskq_home)
+    try:
+        _set_status("does-not-exist", {"status": "blocked"})
+        after = load_tasks()
+    finally:
+        _restore_home(prior)
+
+    assert len(after) == 1, (
+        f"_set_status with a missing id must not add tasks, got {after!r}"
+    )
+    assert after[0].get("id") == "present", (
+        f"_set_status with a missing id must not mutate the existing task, "
+        f"got {after[0]!r}"
+    )
+    assert "status" not in after[0] or after[0]["status"] != "blocked", (
+        f"the missing-id branch must not write fields into the surviving task, "
+        f"got {after[0]!r}"
+    )
