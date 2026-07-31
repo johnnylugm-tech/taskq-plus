@@ -1,7 +1,7 @@
 {
   "gate": 1,
   "phase": 8,
-  "fr_id": "FR-04",
+  "fr_id": "FR-08",
   "overall_score": 100.0,
   "quality_complete": true,
   "rounds_used": 1,
@@ -14,15 +14,15 @@
     "type_safety": {
       "score": 100.0,
       "threshold": 100,
-      "tool_evidence": "{\"version\": \"1.1.409\", \"time\": \"1785524273156\", \"generalDiagnostics\": [], \"summary\": {\"filesAnalyzed\": 23, \"errorCount\": 0, \"warningCount\": 0, \"informationCount\": 0, \"timeInSec\": 0.725}}"
+      "tool_evidence": "{\"version\": \"1.1.409\", \"time\": \"1785524270243\", \"generalDiagnostics\": [], \"summary\": {\"filesAnalyzed\": 23, \"errorCount\": 0, \"warningCount\": 0, \"informationCount\": 0, \"timeInSec\": 0.754}}"
     },
     "test_coverage": {
       "score": 100.0,
       "threshold": 100,
-      "tests_passed": 30,
+      "tests_passed": 16,
       "tests_failed": 0,
       "tests_skipped": 0,
-      "tool_evidence": "============================= test session starts ==============================\nplatform darwin -- Python 3.11.15, pytest-8.4.2, pluggy-1.6.0\ncollected 30 items\n\n03-development/tests/test_fr04.py .............................. [100%]\n\n============================== 30 passed in 0.29s ==============================\ncoverage totals: percent_covered=100.0, missing_lines=0, spec_cov_pct=100 (4/4 required tests exist)"
+      "tool_evidence": "============================= test session starts ==============================\nplatform darwin -- Python 3.11.15, pytest-8.4.2, pluggy-1.6.0\nrootdir: /Users/johnny/projects/taskq-plus/03-development\nplugins: benchmark-5.2.3, cov-7.1.0, anyio-4.14.2, hypothesis-6.164.0\ncollected 16 items\n\n03-development/tests/test_fr08.py ................                      [100%]\n\n============================== 16 passed in 1.63s ===============================\ncoverage totals: percent_covered=100.0, missing_lines=0, spec_cov_pct=100 (6/6 required tests exist: test_fr08_a, test_fr08_b, test_fr08_c[json], test_fr08_c[csv], test_fr08_c[md], test_fr08_d)"
     }
   },
   "enforcer_sha": "82685731fccad3bbde277120813aea546dc63a8c",
