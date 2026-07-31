@@ -2,7 +2,7 @@
 
 **Checkpoint**: `P4-pre-gate3-20260731`  
 **Phase**: P4 — Testing  
-**Generated**: 2026-07-31T04:25:46Z
+**Generated**: 2026-07-31T08:29:10Z
 
 > ⚠️  **開始下一個工作階段前，請先執行 `/compact` 壓縮上下文**，再從「接下來的工作」繼續。
 
@@ -129,9 +129,11 @@ All 8 FR(s) Gate 1 re-eval PASS [FR-01,FR-02,FR-03,FR-04,FR-05,…+3]. Gate 3 (1
   - ? / gate3-verify-r1: **complete**
 
 **Recently Committed Files:**
+  - `harness`
   - `.methodology/state.json`
-  - `HANDOVER.md`
   - `03-development/tests/test_phase4_coverage_gaps.py`
+  - `03-development/tests/test_phase4_property_specs.py`
+  - `HANDOVER.md`
   - `01-requirements/TRACEABILITY_MATRIX.md`
   - `03-development/tests/test_fr02.py`
   - `03-development/tests/test_nfr_cross_cutting.py`
@@ -147,8 +149,6 @@ All 8 FR(s) Gate 1 re-eval PASS [FR-01,FR-02,FR-03,FR-04,FR-05,…+3]. Gate 3 (1
   - `03-development/src/taskq_plus/storage/breaker_store.py`
   - `03-development/src/taskq_plus/storage/cache_store.py`
   - `03-development/src/taskq_plus/storage/task_store.py`
-  - `.methodology/bug_hunt_report.json`
-  - `.methodology/decision_logs/2026-07-31/GATE_4_7f553af8.yaml`
 
 ## 接下來的工作
 
