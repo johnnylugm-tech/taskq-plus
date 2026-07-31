@@ -869,6 +869,55 @@ class TestCoverageCliMainErrors:
         finally:
             cmds.export_cmd = original
 
+    def test_submit_store_corrupted_returns_exit_1(self, taskq_home):
+        """Lines 210-212: submit_cmd raises StoreCorrupted → exit 1.
+
+        The submit handler calls `_assert_store_intact()` before touching the
+        graph; a corrupt `tasks.json` triggers the StoreCorrupted branch in the
+        click wrapper.
+        """
+        (taskq_home / "tasks.json").write_text("{not valid json", encoding="utf-8")
+        code, _out, err = _main_capture(["submit", "echo x"])
+        assert code == EXIT_INTERNAL_ERROR, (
+            f"submit(corrupt) exit={code} stderr={err!r}"
+        )
+
+    def test_status_store_corrupted_returns_exit_1(self, taskq_home):
+        """Lines 268-270: status_cmd raises StoreCorrupted → exit 1.
+
+        The status handler calls `_assert_store_intact()` before lookup; a
+        corrupt `tasks.json` surfaces via the StoreCorrupted branch in the
+        click wrapper.
+        """
+        (taskq_home / "tasks.json").write_text("{not valid json", encoding="utf-8")
+        code, _out, err = _main_capture(["status", "deadbeef"])
+        assert code == EXIT_INTERNAL_ERROR, (
+            f"status(corrupt) exit={code} stderr={err!r}"
+        )
+
+    def test_run_plugin_load_error_returns_exit_6(self, taskq_home):
+        """Lines 238-240: run_cmd raises PluginLoadError → exit 6.
+
+        FR-05 / FR-07 exit-code map: a plugin load failure during `run` is
+        exit 6 (plugin load failed), not the generic internal-error exit 1.
+        """
+        from taskq_plus.cli import commands as cmds
+
+        task_id = _submit_task("echo plugin-load-probe")
+        original = cmds.run_cmd
+
+        def _raise(*a, **kw):
+            raise cmds.PluginLoadError("synthetic plugin load failure")
+
+        cmds.run_cmd = _raise
+        try:
+            code, _out, err = _main_capture(["run", task_id])
+            assert code == EXIT_PLUGIN_LOAD_FAILED, (
+                f"run(plugin-load-error) exit={code} stderr={err!r}"
+            )
+        finally:
+            cmds.run_cmd = original
+
 
 class TestCoverageCliMainEntry:
     """Cover `cli/main.py` main() entry-point paths."""
@@ -1290,6 +1339,25 @@ class TestCoverageCommandsHandlers:
         assert out["cleared"] is True
         # tasks.json was not removed (OSError), but the call did not crash.
         assert "tasks.json" not in out["removed"]
+
+    def test_run_cmd_service_plugin_load_error_translates(self, taskq_home, monkeypatch):
+        """Lines 359-362: execute_with_cache raising _ServicePluginLoadError
+        is re-raised as `commands.PluginLoadError` (FR-07: plugin-load failure
+        during `run` → exit 6, not exit 1)."""
+        from taskq_plus.service import cache as cache_mod
+        from taskq_plus.service.plugins import PluginLoadError as _ServicePluginLoadError
+
+        task_id = _submit_task("echo svc-plugin-probe")
+        original = cache_mod.execute_with_cache
+        cache_mod.execute_with_cache = lambda *a, **kw: (
+            _ for _ in ()
+        ).throw(_ServicePluginLoadError("synthetic service plugin load"))
+        try:
+            with pytest.raises(_cmd_mod.PluginLoadError) as ei:
+                _cmd_mod.run_cmd(task_id=task_id)
+            assert "plugin load failed" in str(ei.value)
+        finally:
+            cache_mod.execute_with_cache = original
 
 
 class TestCoverageCommandsLegacy:
