@@ -25,5 +25,5 @@
   "test_inventory_checksum": "44f2e01fd5e2dec50ae82b7795d68498e64a55d6085c6d7ae4bc593ce5b7da14",
   "phase_truth_passed": true,
   "last_milestone_command": "push-milestone --type p4-pre-gate3",
-  "last_milestone_at": "2026-07-31T03:35:11.744997+00:00"
+  "last_milestone_at": "2026-07-31T04:08:50.952863+00:00"
 }
