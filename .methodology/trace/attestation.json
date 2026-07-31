@@ -1,7 +1,7 @@
 {
   "schema": "harness/traceability/attestation/v1",
-  "git_sha": "3a9de338ccaed3747a42da1352378a0b2e9ce51b",
-  "content_sha256": "40e03a1c999ee0042a74d23211e7bccccdbeb0ac6f88dd36371432fb2020b383",
+  "git_sha": "c94a01c3acc5413129f6ab2452a53a9fd07c70ed",
+  "content_sha256": "52e83b3d66f1e8a84639af0eba0e8b188904b2b432031bc564288f5e95416827",
   "tool": "scripts/build_trace_attestation.py",
   "overlay_used": null,
   "overlay_errors": [],
@@ -14,7 +14,7 @@
       "code_coverage": "100.0%",
       "test_coverage": "100.0%",
       "verification_rate": "100.0%",
-      "total_links": 77,
+      "total_links": 67,
       "missing_mappings": {
         "fr_without_srs": [],
         "fr_without_code": [],
@@ -43,8 +43,7 @@
           "03-development/tests/test_phase4_coverage_gaps.py"
         ],
         "test_files": [
-          "tests/test_fr01.py",
-          "tests/test_phase4_coverage_gaps.py"
+          "03-development/tests/test_fr01.py"
         ],
         "sad_module": "—",
         "priority": "HIGH"
@@ -62,9 +61,7 @@
           "03-development/tests/test_phase4_coverage_gaps.py"
         ],
         "test_files": [
-          "tests/test_bug_hunt_repro.py",
-          "tests/test_fr02.py",
-          "tests/test_phase4_coverage_gaps.py"
+          "03-development/tests/test_fr02.py"
         ],
         "sad_module": "—",
         "priority": "HIGH"
@@ -83,9 +80,7 @@
           "03-development/tests/test_phase4_coverage_gaps.py"
         ],
         "test_files": [
-          "tests/test_bug_hunt_repro.py",
-          "tests/test_fr03.py",
-          "tests/test_phase4_coverage_gaps.py"
+          "03-development/tests/test_fr03.py"
         ],
         "sad_module": "—",
         "priority": "HIGH"
@@ -101,7 +96,7 @@
           "03-development/src/taskq_plus/storage/cache_store.py"
         ],
         "test_files": [
-          "tests/test_fr04.py"
+          "03-development/tests/test_fr04.py"
         ],
         "sad_module": "—",
         "priority": "HIGH"
@@ -120,8 +115,7 @@
           "03-development/tests/test_phase4_coverage_gaps.py"
         ],
         "test_files": [
-          "tests/test_fr05.py",
-          "tests/test_phase4_coverage_gaps.py"
+          "03-development/tests/test_fr05.py"
         ],
         "sad_module": "—",
         "priority": "HIGH"
@@ -137,7 +131,7 @@
           "03-development/tests/test_fr06.py"
         ],
         "test_files": [
-          "tests/test_fr06.py"
+          "03-development/tests/test_fr06.py"
         ],
         "sad_module": "—",
         "priority": "HIGH"
@@ -155,9 +149,7 @@
           "03-development/tests/test_phase4_coverage_gaps.py"
         ],
         "test_files": [
-          "tests/test_bug_hunt_repro.py",
-          "tests/test_fr07.py",
-          "tests/test_phase4_coverage_gaps.py"
+          "03-development/tests/test_fr07.py"
         ],
         "sad_module": "—",
         "priority": "HIGH"
@@ -177,9 +169,7 @@
           "03-development/tests/test_phase4_coverage_gaps.py"
         ],
         "test_files": [
-          "tests/test_bug_hunt_repro.py",
-          "tests/test_fr08.py",
-          "tests/test_phase4_coverage_gaps.py"
+          "03-development/tests/test_fr08.py"
         ],
         "sad_module": "—",
         "priority": "HIGH"
