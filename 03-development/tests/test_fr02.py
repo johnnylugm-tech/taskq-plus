@@ -1257,3 +1257,70 @@ def test_taskq_store_atomic_write_reraises_filenotfound(taskq_home):
         with pytest.raises(FileNotFoundError):
             _atomic_write_json(target, {"a": 1})
 
+
+# ---- executor.py lines 455-461 (run_all with breaker OPEN) ----------------
+def test_fr02_run_all_breaker_open_returns_3_emits_event_and_stderr(
+    taskq_home, monkeypatch, capsys
+):
+    """Covers executor.py lines 455-461 — the run_all() breaker-OPEN branch.
+
+    SPEC.md#L113: while OPEN (inside cooldown) `run_all` immediately rejects
+    with exit 3 + stderr `breaker open`, and does NOT execute any subprocess.
+
+    We pre-seed an OPEN breaker record (opened_at = now → inside cooldown)
+    and seed a pending task. After `run_all()`:
+      - return value is EXIT_BREAKER_OPEN (3)
+      - stderr carries the literal "breaker open" message
+      - the audit journal gains a `breaker_open` event with cooldown detail
+      - the seeded task remains `pending` (no subprocess was spawned)
+    """
+    from taskq_plus.observability.audit import read_entries
+    from taskq_plus.service.executor import EXIT_BREAKER_OPEN, run_all
+    from taskq_plus.storage.breaker_store import write_breaker
+
+    # Pre-seed an OPEN breaker record — opened_at = now keeps it inside cooldown.
+    write_breaker(
+        {
+            "version": 1,
+            "state": "OPEN",
+            "failure_count": 3,
+            "opened_at": __import__("time").time(),
+        }
+    )
+
+    # Seed a pending task — if the breaker guard fails, this would be executed.
+    _seed_pending(taskq_home, task_id="would-run", command="true")
+
+    rc = run_all()
+    captured = capsys.readouterr()
+
+    assert rc == EXIT_BREAKER_OPEN, (
+        f"expected EXIT_BREAKER_OPEN (3), got {rc}; stderr={captured.err!r}"
+    )
+    assert "breaker open" in captured.err, (
+        f"expected 'breaker open' on stderr, got {captured.err!r}"
+    )
+
+    # Audit journal must have gained a `breaker_open` event.
+    entries = read_entries()
+    open_events = [e for e in entries if e.get("event") == "breaker_open"]
+    assert len(open_events) >= 1, (
+        f"expected at least one 'breaker_open' audit event, got: {entries!r}"
+    )
+    detail = open_events[-1].get("detail") or {}
+    assert "cooldown_seconds" in detail, (
+        f"breaker_open event missing cooldown_seconds detail: {open_events[-1]!r}"
+    )
+
+    # The pending task must NOT have been executed (status remains 'pending').
+    prior = _with_home(taskq_home)
+    try:
+        rec = find_by_id("would-run")
+    finally:
+        _restore_home(prior)
+    assert rec is not None
+    assert rec.get("status") == "pending", (
+        f"breaker guard failed — task was executed despite OPEN breaker: "
+        f"status={rec.get('status')!r}"
+    )
+
