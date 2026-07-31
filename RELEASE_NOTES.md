@@ -1,80 +1,19 @@
 # Release Notes
 
-> **Generated**: 2026-07-31 13:10:02 UTC
-> **Version**: development
+> **Generated**: 2026-07-31 14:26:42 UTC
+> **Version**: gate4-20260731-score98
 
 ---
 
 ## Quality Score
-- **Gate 4**: 98.5/100
+- **Gate 4**: 98.71/100
 
 ---
 
-## Features
-
-- feat(FR-08): Gate1 PASS — score=100.0 [phase=5]
-- feat(FR-07): Gate1 PASS — score=100.0 [phase=5]
-- feat(FR-06): Gate1 PASS — score=100.0 [phase=5]
-- feat(FR-05): Gate1 PASS — score=100.0 [phase=5]
-- feat(FR-04): Gate1 PASS — score=100.0 [phase=5]
-- feat(FR-01): Gate1 PASS — score=100.0 [phase=5]
-- feat(FR-03): Gate1 PASS — score=100.0 [phase=5]
-- feat(FR-02): Gate1 PASS — score=100.0 [phase=5]
-- feat(P4-pre-gate3): all 8 FR(s) Gate1 re-eval PASS; ready for Gate 3
-- feat(P4-pre-gate3): all 8 FR(s) Gate1 re-eval PASS; ready for Gate 3
-- feat(P4-pre-gate3): all 8 FR(s) Gate1 re-eval PASS; ready for Gate 3
-- feat(P4-pre-gate3): all 8 FR(s) Gate1 re-eval PASS; ready for Gate 3
-- feat(P4-pre-gate3): all 8 FR(s) Gate1 re-eval PASS; ready for Gate 3
-- feat(P4-pre-gate3): all 8 FR(s) Gate1 re-eval PASS; ready for Gate 3
-- feat(P4-pre-gate3): all 8 FR(s) Gate1 re-eval PASS; ready for Gate 3
-- feat(FR-04): Gate1 PASS — score=100.0 [phase=4]
-- feat(FR-03): Gate1 PASS — score=100.0 [phase=4]
-- feat(FR-02): Gate1 PASS — score=100.0 [phase=4]
-- feat(FR-01): Gate1 PASS — score=100.0 [phase=4]
-- feat(FR-05): Gate1 PASS — score=100.0 [phase=4]
-
-## Bug Fixes
-
-- fix(executor,cli,task_store): resolve 7 confirmed bug-hunt findings
-- fix(FR-08): resolve ruff linting violations
-- fix(FR-06): address Gate1 failing dims
-- fix(FR-06): resolve ruff linting violations
-- fix(FR-04): resolve ruff linting violations
-- fix(FR-02): address Gate1 failing dims
-
-## Enhancements
-
-- refactor(FR-08): IMPROVE
-- refactor(FR-07): IMPROVE
-- refactor(FR-06): IMPROVE
-- refactor(FR-05): IMPROVE
-- refactor(FR-04): IMPROVE
-- refactor(FR-03): IMPROVE
-- refactor(FR-02): IMPROVE
-- refactor(FR-01): IMPROVE
-
 ## Other
 
-- handover: advance to Phase 6
-- docs(P5): BASELINE.md — review baseline checkpoint
-- chore(p5): baseline + verification-report artifacts
-- test(FR-08): add coverage tests and pragma exclusions
-- test(FR-05): add coverage tests and pragma exclusions
-- chore: bump harness submodule to b45cf04 (FSM backwards-check fix)
-- test(FR-02): add coverage tests and pragma exclusions
-- test(FR-01): add coverage tests and pragma exclusions
-- chore: phase 4 clean-up
-- handover: advance to Phase 5
-- chore: bump harness submodule to 5355f22 (mutation_testing feature flag)
-- test(P4): Gate3 PASS score=98.9 — full test suite
-- test(P4): Gate3 PASS score=98.9 — full test suite
-- chore(p4): test-plan + coverage + bug-hunt artifacts
-- PROBE-SUBJECT-XYZ
-- test(FR-02): add coverage tests and pragma exclusions
-- test(FR-05): add coverage tests and pragma exclusions
-- chore: bump harness submodule to 0d9aa16
-- handover: advance to Phase 4
-- test(FR-08): add coverage tests and pragma exclusions
+- chore: bump harness submodule to a560b34 (test_coverage cov-target scoping fix)
+- chore: bump harness submodule to 4077f97 (gate_score_overrides threshold-floor fix)
 
 ---
 

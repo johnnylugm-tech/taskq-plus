@@ -231,7 +231,7 @@
       "overall_score": 98.93
     },
     "gate4": {
-      "score": 98.5,
+      "score": 98.71,
       "quality_complete": true,
       "rounds_used": 2,
       "open_critical": 0,
@@ -239,7 +239,7 @@
       "phase": 6,
       "gate": 4,
       "fr_scope": "all",
-      "overall_score": 98.5
+      "overall_score": 98.71
     }
   }
 }

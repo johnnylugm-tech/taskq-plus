@@ -16,7 +16,7 @@
 | Gate 1 | 8/8 FRs | ✅ PASS |
 | Gate 2 | 95.7 | ✅ PASS |
 | Gate 3 | 98.9 | ✅ PASS |
-| Gate 4 | 98.5 | ✅ PASS |
+| Gate 4 | 98.7 | ✅ PASS |
 
 ### FR Registry (Gate 1)
 | FR ID | Score | Status |

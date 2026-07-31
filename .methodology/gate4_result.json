@@ -14,10 +14,10 @@
       "tool_evidence": "pyright 03-development/src: errorCount=0, warningCount=0, filesAnalyzed=23"
     },
     "test_coverage": {
-      "score": 97.51,
+      "score": 100.0,
       "threshold": 80,
       "tool_output": ".sessi-work/round_1/tools/coverage.json",
-      "tool_evidence": "coverage.py: 5998 covered / 6151 statements = 97.5%; 496 passed, 5 skipped (documented pytest.skip stubs for feature-flagged NFR-08)"
+      "tool_evidence": "coverage.py --cov=03-development/src (fixed scope, harness a560b34): 1440 covered / 1440 statements = 100.0%; 496 passed, 5 skipped (documented pytest.skip stubs for feature-flagged NFR-08). Prior 97.51% measured coverage.py's own \".\" default (test files + FR-07's ephemeral pytest tmp_path plugin fixtures included in the denominator alongside real source)."
     },
     "security": {
       "score": 98.0,
@@ -132,12 +132,12 @@
   },
   "open_critical_count": 0,
   "open_high_count": 0,
-  "enforcer_sha": "b45cf041380596b7cfaaf63fa12c7a7502a580cd",
+  "enforcer_sha": "a560b3425f92cf9f44c54917096eb14758d05fa6",
   "crg_review_context": {
     "status": "ok",
-    "summary": "Review context for 7 changed file(s):\n  - Risk: low\n  - 0 impacted nodes in 0 files",
+    "summary": "Review context for 6 changed file(s):\n  - Risk: low\n  - 0 impacted nodes in 0 files",
     "risk": "low",
-    "changed_file_count": 7,
+    "changed_file_count": 6,
     "impacted_file_count": 0,
     "key_entities": [],
     "test_gaps": 0,
@@ -148,24 +148,24 @@
     ],
     "context_savings": {
       "estimated": true,
-      "saved_tokens": 6471,
+      "saved_tokens": 9510,
       "saved_percent": 99
     }
   },
   "crg_impact_radius": {
     "status": "ok",
-    "summary": "Blast radius for 7 changed file(s):\n  - 0 nodes directly changed\n  - 0 nodes impacted (within 2 hops)\n  - 0 additional files affected",
+    "summary": "Blast radius for 6 changed file(s):\n  - 0 nodes directly changed\n  - 0 nodes impacted (within 2 hops)\n  - 0 additional files affected",
     "risk": "low",
     "impacted_file_count": 0,
     "key_entities": [],
     "truncated": false,
     "context_savings": {
       "estimated": true,
-      "saved_tokens": 6484,
+      "saved_tokens": 9523,
       "saved_percent": 99
     }
   },
-  "composite_score": 98.5043,
+  "composite_score": 98.707,
   "verdict": "PASS",
   "passed": true
 }
