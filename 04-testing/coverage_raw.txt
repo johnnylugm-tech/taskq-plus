@@ -1,0 +1,183 @@
+........................................................................ [  1%]
+........................................................................ [  2%]
+........................................................................ [  3%]
+........................................................................ [  4%]
+........................................................................ [  5%]
+........................................................................ [  6%]
+........................................................................ [  7%]
+........................................................................ [  8%]
+........................................................................ [  9%]
+........................................................................ [ 10%]
+........................................................................ [ 11%]
+........................................................................ [ 12%]
+........................................................................ [ 13%]
+........................................................................ [ 14%]
+........................................................................ [ 15%]
+........................................................................ [ 16%]
+........................................................................ [ 17%]
+........................................................................ [ 18%]
+........................................................................ [ 19%]
+........................................................................ [ 20%]
+........................................................................ [ 22%]
+........................................................................ [ 23%]
+........................................................................ [ 24%]
+........................................................................ [ 25%]
+........................................................................ [ 26%]
+........................................................................ [ 27%]
+........................................................................ [ 28%]
+........................................................................ [ 29%]
+........................................................................ [ 30%]
+........................................................................ [ 31%]
+........................................................................ [ 32%]
+......................................................sss............... [ 33%]
+........................................................................ [ 34%]
+........................................................................ [ 35%]
+........................................................................ [ 36%]
+........................................................................ [ 37%]
+........................................................................ [ 38%]
+........................................................................ [ 39%]
+........................................................................ [ 40%]
+........................................................................ [ 41%]
+........................................................................ [ 42%]
+........................................................................ [ 44%]
+........................................................................ [ 45%]
+........................................................................ [ 46%]
+........................................................................ [ 47%]
+........................................................................ [ 48%]
+.........................F.............................................. [ 49%]
+........................................................................ [ 50%]
+........................................................................ [ 51%]
+........................................................................ [ 52%]
+........................................................................ [ 53%]
+........................................................................ [ 54%]
+........................................................................ [ 55%]
+........................................................................ [ 56%]
+........................................................................ [ 57%]
+........................................................................ [ 58%]
+........................................................................ [ 59%]
+........................................................................ [ 60%]
+........................................................................ [ 61%]
+........................................................................ [ 62%]
+........................................................................ [ 63%]
+........................................................................ [ 65%]
+........................................................................ [ 66%]
+........................................................................ [ 67%]
+........................................................................ [ 68%]
+........................................................................ [ 69%]
+........................................................................ [ 70%]
+........................................................................ [ 71%]
+........................................................................ [ 72%]
+........................................................................ [ 73%]
+........................................................................ [ 74%]
+........................................................................ [ 75%]
+........................................................................ [ 76%]
+........................................................................ [ 77%]
+........................................................................ [ 78%]
+........................................................................ [ 79%]
+........................................................................ [ 80%]
+........................................................................ [ 81%]
+........................................................................ [ 82%]
+........................................................................ [ 83%]
+........................................................................ [ 84%]
+........................................................................ [ 85%]
+........................................................................ [ 87%]
+........................................................................ [ 88%]
+........................................................................ [ 89%]
+........................................................................ [ 90%]
+........................................................................ [ 91%]
+........................................................................ [ 92%]
+........................................................................ [ 93%]
+........................................................................ [ 94%]
+........................................................................ [ 95%]
+........................................................................ [ 96%]
+........................................................................ [ 97%]
+........................................................................ [ 98%]
+........................................................................ [ 99%]
+..........................                                               [100%]
+=================================== FAILURES ===================================
+_____ TestParseSrsFrSectionsMergesJson.test_real_srs_md_extracts_all_5_frs _____
+
+self = <tests.test_generate_full_plan.TestParseSrsFrSectionsMergesJson object at 0x10b5ff390>
+
+    def test_real_srs_md_extracts_all_5_frs(self):
+        """Regression against the actual INGESTION MODE SRS.md shipped with
+        the integration-test project. Must extract all 5 FRs (FR-01..FR-05).
+    
+        INGESTION MODE (phase1_plan.md §[A-1]) is "100% transcribe ... no
+        invention" from SPEC.md. implementation_modules / acceptance_criteria
+        (JSON) / verification_method are sourced exclusively from an OPTIONAL
+        Appendix A JSON block (_parse_srs_fr_block_json) that neither
+        phase1_plan.md nor phase1-requirements.js ever instructs Agent A to
+        emit — module ownership doesn't exist yet at Phase 1 (that's
+        Architecture/Implementation). generate_full_plan.py itself treats
+        these as optional (`.get(..., [])`), same contract asserted by
+        test_keeps_section_only_fields_when_no_json above. So this test only
+        pins the structural (markdown-section) extraction, not JSON-only
+        metadata that INGESTION MODE never produces."""
+        repo_root = Path(__file__).parent.parent.parent
+        srs_path = repo_root / "01-requirements" / "SRS.md"
+        if not srs_path.exists():
+            pytest.skip(f"Real SRS.md not present at {srs_path}")
+        frs = parse_srs_fr_sections(srs_path)
+>       assert len(frs) == 5, f"expected 5 FRs from real SRS.md, got {len(frs)}"
+E       AssertionError: expected 5 FRs from real SRS.md, got 8
+E       assert 8 == 5
+E        +  where 8 = len([{'acceptance_criteria': [], 'desc': '', 'fr': 'FR-01', 'implementation_modules': [], ...}, {'acceptance_criteria': []...ion_modules': [], ...}, {'acceptance_criteria': [], 'desc': '', 'fr': 'FR-06', 'implementation_modules': [], ...}, ...])
+
+/Users/johnny/projects/taskq-plus/harness/tests/test_generate_full_plan.py:2811: AssertionError
+=============================== warnings summary ===============================
+harness/tests/test_constitution_profile.py::TestLoadProfile::test_invalid_file_warns
+  /Users/johnny/projects/taskq-plus/harness/core/quality_gate/constitution/profile.py:754: UserWarning: Failed to load constitution profile from /var/folders/9s/865m2mg544z72d_5q423mlmm0000gn/T/tmp2u26f37c/bad.json — using defaults. Cause: JSONDecodeError: Expecting value: line 1 column 1 (char 0)
+    warnings.warn(
+
+harness/tests/test_constitution_runner.py::TestCheckTypeFiltering::test_unknown_check_type_passes_all
+  /Users/johnny/projects/taskq-plus/harness/core/quality_gate/constitution/runner.py:169: UserWarning: Unknown constitution check_type: 'unknown' — scanning all files
+    warnings.warn(f"Unknown constitution check_type: {check_type!r} — scanning all files")
+
+harness/tests/test_enforcement.py::TestReadCovercrcSource::test_defaults_to_dot_on_malformed_file
+  /Users/johnny/projects/taskq-plus/harness/core/quality_gate/cov_utils.py:23: UserWarning: read_coveragerc_source: .coveragerc unreadable, defaulting source to '.': File contains no section headers.
+  file: PosixPath('/private/var/folders/9s/865m2mg544z72d_5q423mlmm0000gn/T/pytest-of-johnny/pytest-590/test_defaults_to_dot_on_malfor0/.coveragerc'), line: 1
+  'NOT_INI_FORMAT{{{\n'
+    warnings.warn(f"read_coveragerc_source: .coveragerc unreadable, "
+
+harness/tests/test_policy_engine.py::TestPolicyEngine::test_enable_disable
+  /Users/johnny/projects/taskq-plus/harness/enforcement/policy_engine.py:235: DeprecationWarning: Disabling policy 'p1' is not recommended. Use EnforcementLevel.LOG for optional policies.
+    warnings.warn(
+
+harness/tests/test_w6_gap_fill.py::TestIntegratedStagePassGenerator::test_init_sets_phase
+  /Users/johnny/.local/share/uv/python/cpython-3.11.15-macos-aarch64-none/lib/python3.11/importlib/__init__.py:126: DeprecationWarning: stage_pass_generator.py is deprecated since harness-methodology v2.5.0. STAGE_PASS.md is now machine-generated by finalize-gate. The 'stage-pass' CLI command does not exist.
+    return _bootstrap._gcd_import(name[level:], package, level)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+================================ tests coverage ================================
+______________ coverage: platform darwin, python 3.11.15-final-0 _______________
+
+Name                                                      Stmts   Miss  Cover   Missing
+---------------------------------------------------------------------------------------
+03-development/src/taskq_plus/__init__.py                     0      0   100%
+03-development/src/taskq_plus/cli/__init__.py                 0      0   100%
+03-development/src/taskq_plus/cli/commands.py               274      0   100%
+03-development/src/taskq_plus/cli/main.py                   212      0   100%
+03-development/src/taskq_plus/config.py                      11      0   100%
+03-development/src/taskq_plus/models/__init__.py              0      0   100%
+03-development/src/taskq_plus/models/errors.py               13      0   100%
+03-development/src/taskq_plus/models/task.py                 23      0   100%
+03-development/src/taskq_plus/observability/__init__.py       0      0   100%
+03-development/src/taskq_plus/observability/audit.py         61      0   100%
+03-development/src/taskq_plus/observability/export.py        93      0   100%
+03-development/src/taskq_plus/service/__init__.py             0      0   100%
+03-development/src/taskq_plus/service/breaker.py             51      0   100%
+03-development/src/taskq_plus/service/cache.py               93      0   100%
+03-development/src/taskq_plus/service/dag.py                103      0   100%
+03-development/src/taskq_plus/service/executor.py           174      0   100%
+03-development/src/taskq_plus/service/plugins.py             67      0   100%
+03-development/src/taskq_plus/storage/__init__.py             0      0   100%
+03-development/src/taskq_plus/storage/atomic.py              50      5    90%   41-42, 46, 75-77
+03-development/src/taskq_plus/storage/breaker_store.py       37      0   100%
+03-development/src/taskq_plus/storage/cache_store.py         39      0   100%
+03-development/src/taskq_plus/storage/task_store.py          66      0   100%
+---------------------------------------------------------------------------------------
+TOTAL                                                      1367      5    99%
+=========================== short test summary info ============================
+FAILED harness/tests/test_generate_full_plan.py::TestParseSrsFrSectionsMergesJson::test_real_srs_md_extracts_all_5_frs
+1 failed, 6862 passed, 3 skipped, 5 warnings in 115.25s (0:01:55)
