@@ -23,7 +23,7 @@
 |-------|-------|--------|
 | FR-01 | 100.0 | ✅ COMPLETE |
 | FR-02 | 100.0 | ✅ COMPLETE |
-| FR-03 | 99.6 | 🔄 In Progress |
+| FR-03 | 97.6 | 🔄 In Progress |
 | FR-04 | 34.0 | 🔄 In Progress |
 | FR-05 | 34.0 | 🔄 In Progress |
 | FR-06 | 100.0 | ✅ COMPLETE |
