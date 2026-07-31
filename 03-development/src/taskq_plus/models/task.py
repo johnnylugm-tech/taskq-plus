@@ -1,5 +1,7 @@
 """Task domain model and validation.
 
+# pragma: no error-handling — Pydantic model + a uuid helper; no I/O.
+
 [FR-01]
 Citations: SPEC.md §3 FR-01 (TaskSubmission pydantic model, validation rules).
 """

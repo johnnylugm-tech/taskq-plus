@@ -201,10 +201,15 @@ class AuditLogger:
         }
         target = self.path
         target.parent.mkdir(parents=True, exist_ok=True)
-        with target.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
-            handle.flush()
-            os.fsync(handle.fileno())
+        try:
+            with target.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+        except OSError:
+            # Audit logging is best-effort: a full disk or revoked permission
+            # must not crash the CLI. The in-memory `entry` is still returned.
+            pass
         return entry
 
 

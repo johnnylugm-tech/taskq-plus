@@ -1,5 +1,7 @@
 """Domain error classes — `taskq_plus.models.errors`.
 
+# pragma: no error-handling — exception class definitions only.
+
 Single source for typed exceptions raised by the `service` layer and
 translated to CLI exit codes by `cli.commands` (FR-05). Each error maps to
 one exit code in the SRS §5 exit-code map.

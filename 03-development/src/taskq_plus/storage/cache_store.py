@@ -68,13 +68,13 @@ def write_cache(record: Dict[str, Any]) -> None:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             json.dump(record, fh, ensure_ascii=False)
         os.replace(tmp_name, path)
-    except BaseException:
-        # Best-effort cleanup of the temp file on failure.
+    finally:
+        # Best-effort cleanup of the temp file on both success (already moved
+        # away — unlink 404s, swallowed) and failure (real leftover removed).
         try:
             os.unlink(tmp_name)
         except OSError:
             pass
-        raise
 
 
 def read_cache() -> Optional[Dict[str, Any]]:

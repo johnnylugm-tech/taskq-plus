@@ -1,5 +1,8 @@
 """Entry point for `python -m taskq_plus`.
 
+# pragma: no error-handling — thin wrapper that defers all error handling to
+# `cli.main.main` (which carries the SPEC §7 exit-code map).
+
 [FR-05]
 Citations:
   - SPEC.md §3 FR-05 (`python -m taskq_plus` → cli.main.main).

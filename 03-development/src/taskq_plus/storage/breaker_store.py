@@ -58,12 +58,11 @@ def write_breaker(record: Dict[str, Any]) -> None:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             json.dump(record, fh, ensure_ascii=False)
         os.replace(tmp_name, path)
-    except BaseException:
+    finally:
         try:
             os.unlink(tmp_name)
         except OSError:
             pass
-        raise
 
 
 def read_breaker() -> Optional[Dict[str, Any]]:

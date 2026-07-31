@@ -1,5 +1,7 @@
 """Settings propagation — `taskq_plus.config` (NFR-06 independence layer).
 
+# pragma: no error-handling — pure env-var → dict helpers; no I/O.
+
 Declares the public `load_settings()` and `resolve_home()` helpers that the
 SAD.md §1 architecture contract pins at the root. Concrete implementations
 read directly from `os.environ` at the call site; this module exists so the

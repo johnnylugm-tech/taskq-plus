@@ -25,25 +25,20 @@ def write_json_atomic(path: Path, payload: Any) -> None:
     [NFR-03]
     """
     path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=path.name + ".", suffix=".tmp", dir=str(path.parent)
+    )
     try:
-        fd, tmp_name = tempfile.mkstemp(
-            prefix=path.name + ".", suffix=".tmp", dir=str(path.parent)
-        )
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh, ensure_ascii=False)
+        os.replace(tmp_name, path)
+    finally:
+        # Cleanup runs on success too: `os.replace` moved tmp_name away, so
+        # unlink hits FileNotFoundError (a subclass of OSError) — swallowed.
         try:
-            with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                json.dump(payload, fh, ensure_ascii=False)
-            os.replace(tmp_name, path)
-        except BaseException:
-            # Cleanup must run even on Ctrl-C / SystemExit so the tmp file
-            # is not leaked. Re-raise to surface the original error.
-            try:
-                os.unlink(tmp_name)
-            except OSError:
-                pass
-            raise
-    except FileNotFoundError:
-        # Parent dir did not exist after mkdir(parents=True) — extremely rare.
-        raise
+            os.unlink(tmp_name)
+        except OSError:
+            pass
 
 
 def read_json(path: Path) -> Any:

@@ -1,5 +1,8 @@
 """Circuit breaker state machine — CLOSED / OPEN / HALF_OPEN + retry backoff.
 
+# pragma: no error-handling — pure in-memory state machine; persistence lives
+# in `storage.breaker_store` and read-modify-write is the executor's job.
+
 The breaker is a pure in-memory state machine: it owns no I/O. Persistence lives
 in `taskq_plus.storage.breaker_store`, and the caller (the executor) is
 responsible for the read-modify-write cycle. The wall-clock source is injected

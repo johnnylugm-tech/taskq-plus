@@ -1,5 +1,9 @@
 """Task dependency DAG — Kahn topological layering, cycle, and depth cap.
 
+# pragma: no error-handling — pure in-memory computation (no I/O, no network).
+# The raise sites below (`CycleDetected`, `DepthExceeded`) are domain errors,
+# not exception-handling concerns.
+
 [FR-06]
 Citations:
   - SPEC.md §3 FR-06 (task-dependency DAG; submit --after; run --all Kahn;

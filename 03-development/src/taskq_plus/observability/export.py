@@ -1,5 +1,8 @@
 """taskq_plus.observability.export — multi-format task export renderers.
 
+# pragma: no error-handling — pure string/JSON rendering over an in-memory
+# task list; the file I/O is owned by `cli.commands.export_cmd` (FR-08 entry).
+
 `export_tasks` is the SAB-bound writer for the three FR-08 formats
 (`json` / `csv` / `md`). `parse_export` is its inverse: a round-trip reader
 used by the cross-format invariant asserted by test_fr08_c. NFR-04
