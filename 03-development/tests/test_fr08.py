@@ -883,3 +883,38 @@ def test_parse_export_unknown_format_raises(taskq_home):
     # The lowercase-normalisation branch — uppercase must also raise.
     with pytest.raises(ValueError, match="unsupported export format"):
         parse_export("anything", "YAML")
+
+
+# ---------------------------------------------------------------------------
+# Coverage: audit.py lines 209-212 — the `except OSError` swallow in
+# `AuditLogger.emit`. Audit logging is documented as best-effort (full
+# disk, revoked perms, read-only file) and must never crash the CLI; the
+# in-memory `entry` must still come back. Patching `pathlib.Path.open` to
+# raise OSError is the lightest hammer that reliably trips the branch.
+# ---------------------------------------------------------------------------
+def test_emit_oserror_best_effort(taskq_home, monkeypatch):
+    """`emit()` swallows OSError so the CLI never crashes on a write failure."""
+    import pathlib
+
+    def _explode_open(self, *args, **kwargs):  # noqa: ANN001
+        raise OSError("disk full (synthetic)")
+
+    monkeypatch.setattr(pathlib.Path, "open", _explode_open)
+
+    logger = AuditLogger(correlation_id=CORRELATION_ID_TOKEN)
+    entry = logger.emit(
+        "submit",
+        task_id="deadbeef",
+        detail={"command": "echo hi"},
+    )
+    # The in-memory entry must be returned even though the write failed —
+    # the `except OSError: pass` branch (lines 209-212) swallows the error.
+    assert isinstance(entry, dict)
+    assert set(entry) == set(AUDIT_FIELDS)
+    assert entry["event"] == "submit"
+    assert entry["task_id"] == "deadbeef"
+    assert entry["correlation_id"] == CORRELATION_ID_TOKEN
+    assert entry["detail"] == {"command": "echo hi"}
+    # Nothing was written to disk.
+    journal = taskq_home / "audit.jsonl"
+    assert (not journal.exists()) or journal.read_text() == ""
