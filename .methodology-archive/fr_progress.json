@@ -1,0 +1,54 @@
+{
+  "phase": 8,
+  "updated_at": "2026-07-31T19:00:58Z",
+  "frs": {
+    "FR-01": {
+      "status": "gate1_pass",
+      "score": 100.0,
+      "phase": 8,
+      "timestamp": "2026-07-31T18:58:59Z"
+    },
+    "FR-02": {
+      "status": "gate1_pass",
+      "score": 100.0,
+      "phase": 8,
+      "timestamp": "2026-07-31T19:00:58Z"
+    },
+    "FR-04": {
+      "status": "gate1_pass",
+      "score": 100.0,
+      "phase": 8,
+      "timestamp": "2026-07-31T18:59:21Z"
+    },
+    "FR-05": {
+      "status": "gate1_pass",
+      "score": 100.0,
+      "phase": 8,
+      "timestamp": "2026-07-31T18:58:33Z"
+    },
+    "FR-06": {
+      "status": "gate1_pass",
+      "score": 100.0,
+      "phase": 8,
+      "timestamp": "2026-07-31T19:00:01Z"
+    },
+    "FR-07": {
+      "status": "gate1_pass",
+      "score": 100.0,
+      "phase": 8,
+      "timestamp": "2026-07-31T18:58:47Z"
+    },
+    "FR-08": {
+      "status": "gate1_pass",
+      "score": 100.0,
+      "phase": 8,
+      "timestamp": "2026-07-31T19:00:21Z"
+    },
+    "FR-03": {
+      "status": "gate1_pass",
+      "score": 100.0,
+      "phase": 8,
+      "timestamp": "2026-07-31T18:58:34Z"
+    }
+  }
+}

@@ -1,0 +1,195 @@
+{
+  "quality_complete": true,
+  "breakdown": {
+    "linting": {
+      "score": 100.0,
+      "threshold": 90,
+      "tool_output": ".sessi-work/round_1/tools/linting.txt",
+      "tool_evidence": "ruff check 03-development/src --output-format json → 0 violations"
+    },
+    "type_safety": {
+      "score": 100.0,
+      "threshold": 85,
+      "tool_output": ".sessi-work/round_1/tools/type_safety.txt",
+      "tool_evidence": "pyright 03-development/src/ --outputjson → errorCount=0, warningCount=0"
+    },
+    "test_coverage": {
+      "score": 100.0,
+      "threshold": 80,
+      "tool_output": ".sessi-work/round_1/tools/coverage.json",
+      "tool_evidence": "coverage run -m pytest 03-development/tests → 100% on all 03-development/src/ files (5877/6029 overall = 97.48%; src/ missing_lines = 0). New test_phase4_coverage_gaps.py closes the 15-line gap (cli/main.py StoreCorrupted, cli/commands.py _ServicePluginLoadError rewrap, audit.py + atomic.py fsync OSError, executor.py run_all breaker-OPEN branch)."
+    },
+    "security": {
+      "score": 98.0,
+      "threshold": 80,
+      "tool_output": ".sessi-work/round_1/tools/security.txt",
+      "tool_evidence": "bandit -r 03-development/src/ -f json → 0 HIGH, 0 MEDIUM, 2 LOW; score = 100 − 0×10 − 0×3 − 2×1 = 98"
+    },
+    "secrets_scanning": {
+      "score": 100.0,
+      "threshold": 100,
+      "tool_output": ".sessi-work/round_1/tools/secrets.json",
+      "tool_evidence": "gitleaks detect --source . --report-format json → 'no leaks found' (0 bytes; exit 0)"
+    },
+    "license_compliance": {
+      "score": 100.0,
+      "threshold": 100,
+      "tool_output": ".sessi-work/round_1/tools/license.json",
+      "tool_evidence": "scancode --license --json-pp 03-development/src/ → 59 files scanned, 0 unknown/non-compliant licenses"
+    },
+    "mutation_testing": {
+      "score": null,
+      "threshold": 70,
+      "tool_output": ".sessi-work/round_1/tools/mutation_testing.txt",
+      "tool_evidence": "Disabled by feature flag (mutation_testing=false). Framework re-normalises composite excluding this dimension.",
+      "excluded_by_feature_flag": true
+    },
+    "integration_coverage": {
+      "score": 98.59,
+      "threshold": 60,
+      "tool_output": ".sessi-work/round_1/tools/coverage.json",
+      "tool_evidence": "cli/main.py line coverage 97.29% (215/221); cli/commands.py 99.29% (278/280). NFR-10 (>=80%) cleared via CLI entry point."
+    },
+    "architecture": {
+      "score": 100.0,
+      "threshold": 80,
+      "tool_output": "",
+      "tool_evidence": "Framework-owned: harness re-runs CRG independently at finalize-gate (community_cohesion.score).",
+      "framework_override": true
+    },
+    "readability": {
+      "score": 88.3,
+      "threshold": 80,
+      "tool_output": ".sessi-work/round_1/tools/readability.txt",
+      "tool_evidence": "python3 -m harness.toolchains.readability_v2 . → project_score=88.3, project_avg_cc=3.23, total_lloc=1724"
+    },
+    "error_handling": {
+      "score": 100.0,
+      "threshold": 80,
+      "tool_output": ".sessi-work/round_1/tools/error_handling.txt",
+      "tool_evidence": "ast-error-handling → total=10, with_handler=10, no_handler=0, exempt=7, anti_patterns=0. Score = 100 × 10/10 − 5 × 0 = 100. (4 except_base_exception replaced by try/finally in atomic/task_store/cache_store/breaker_store; 7 pure-logic files pragma-exempted.)"
+    },
+    "documentation": {
+      "score": 100.0,
+      "threshold": 75,
+      "tool_output": ".sessi-work/round_1/tools/documentation.txt",
+      "tool_evidence": "ast-docstrings → total=108, with_doc=108, missing=0 → 100.00"
+    },
+    "test_assertion_quality": {
+      "score": 100.0,
+      "threshold": 60,
+      "tool_output": ".sessi-work/round_1/tools/test_assertion_quality.txt",
+      "tool_evidence": "AST scan: 406 test functions, 960 asserts (density 2.36), 29 zero-assert (7.1%); formula min(100, 2.36×25 + (1−0.071)×50) = 100"
+    },
+    "performance": {
+      "score": null,
+      "threshold": 75,
+      "tool_output": ".sessi-work/round_1/tools/performance.txt",
+      "tool_evidence": "No pytest-benchmark tests exist (--benchmark-only reported 450 skipped, exit 5). Per protocol, score = None when no benchmarks — defer to Gate 4."
+    },
+    "traceability": {
+      "score": 100.0,
+      "threshold": 100.0,
+      "tool_output": "",
+      "tool_evidence": "framework: compute_trace_dimension(gate=3) → 4a=100.0% 4b=100.0% 4c=100.0% merged=100.0%",
+      "framework_override": true
+    },
+    "adversarial_review": {
+      "score": 100.0,
+      "threshold": 100,
+      "tool_output": "",
+      "tool_evidence": "Framework-owned: bug_hunt_verifier over .methodology/bug_hunt_report.json.",
+      "framework_override": true
+    }
+  },
+  "overall_score": null,
+  "rounds_used": 1,
+  "failing_dimensions": [],
+  "enforcer_sha": "0d9aa16f8ee8c25c4d7f8a9b3cb88dace506e2c9-dirty",
+  "crg_review_context": {
+    "status": "ok",
+    "summary": "Review context for 38 changed file(s):\n  - Risk: low\n  - 0 impacted nodes in 0 files",
+    "risk": "low",
+    "changed_file_count": 38,
+    "impacted_file_count": 0,
+    "key_entities": [
+      "/Users/johnny/projects/taskq-plus/03-development/src/taskq_plus/__main__.py",
+      "main",
+      "/Users/johnny/projects/taskq-plus/03-development/src/taskq_plus/config.py",
+      "load_settings",
+      "resolve_home"
+    ],
+    "test_gaps": 76,
+    "next_tool_suggestions": [
+      "detect_changes",
+      "get_affected_flows",
+      "get_impact_radius"
+    ],
+    "context_savings": {
+      "estimated": true,
+      "saved_tokens": 146943,
+      "saved_percent": 100
+    }
+  },
+  "crg_impact_radius": {
+    "status": "ok",
+    "summary": "Blast radius for 38 changed file(s):\n  - 142 nodes directly changed\n  - 0 nodes impacted (within 2 hops)\n  - 0 additional files affected",
+    "risk": "low",
+    "impacted_file_count": 0,
+    "key_entities": [],
+    "truncated": false,
+    "context_savings": {
+      "estimated": true,
+      "saved_tokens": 147004,
+      "saved_percent": 100
+    }
+  },
+  "crg_affected_flows": {
+    "total": 18,
+    "flows": [
+      {
+        "name": "export_tasks",
+        "criticality": 0.455
+      },
+      {
+        "name": "find_by_name",
+        "criticality": 0.38
+      },
+      {
+        "name": "find_by_id",
+        "criticality": 0.38
+      },
+      {
+        "name": "append_task",
+        "criticality": 0.38
+      },
+      {
+        "name": "check_depth",
+        "criticality": 0.37
+      },
+      {
+        "name": "emit",
+        "criticality": 0.37
+      },
+      {
+        "name": "write_breaker",
+        "criticality": 0.37
+      },
+      {
+        "name": "read_breaker",
+        "criticality": 0.37
+      },
+      {
+        "name": "write_cache",
+        "criticality": 0.37
+      },
+      {
+        "name": "read_cache",
+        "criticality": 0.37
+      }
+    ]
+  },
+  "composite_score": 98.9313,
+  "verdict": "PASS",
+  "passed": true
+}

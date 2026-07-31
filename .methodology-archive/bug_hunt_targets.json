@@ -1,0 +1,220 @@
+{
+  "generated_at": "2026-07-31T01:07:08.115971+00:00",
+  "git_sha": "0fd9b321bca2e40adca3dcc6576fc64d1adc36d9",
+  "language": "python",
+  "high_risk": [
+    {
+      "path": "03-development/src/taskq_plus/models/task.py",
+      "name": "task",
+      "reasons": [
+        "threat_model:T-01 tampering"
+      ]
+    },
+    {
+      "path": "03-development/src/taskq_plus/observability/audit.py",
+      "name": "audit",
+      "reasons": [
+        "threat_model:T-04 information_disclosure",
+        "threat_model:T-08 repudiation"
+      ]
+    },
+    {
+      "path": "03-development/src/taskq_plus/service/executor.py",
+      "name": "executor",
+      "reasons": [
+        "threat_model:T-02 elevation_of_privilege",
+        "threat_model:T-03 denial_of_service"
+      ]
+    },
+    {
+      "path": "03-development/src/taskq_plus/service/plugins.py",
+      "name": "plugins",
+      "reasons": [
+        "threat_model:T-05 elevation_of_privilege",
+        "threat_model:T-06 denial_of_service"
+      ]
+    },
+    {
+      "path": "03-development/src/taskq_plus/storage/atomic.py",
+      "name": "atomic",
+      "reasons": [
+        "threat_model:T-07 tampering"
+      ]
+    },
+    {
+      "path": "03-development/src/taskq_plus/storage/task_store.py",
+      "name": "task_store",
+      "reasons": [
+        "threat_model:T-09 tampering"
+      ]
+    },
+    {
+      "path": "taskq_plus.service.executor",
+      "name": "taskq_plus.service",
+      "reasons": [
+        "declared"
+      ]
+    },
+    {
+      "path": "taskq_plus.service.plugins",
+      "name": "taskq_plus.service",
+      "reasons": [
+        "declared"
+      ]
+    },
+    {
+      "path": "taskq_plus.storage.task_store",
+      "name": "taskq_plus.storage",
+      "reasons": [
+        "declared"
+      ]
+    }
+  ],
+  "standard": [
+    {
+      "path": "03-development/src/taskq_plus/__init__.py",
+      "name": "__init__"
+    },
+    {
+      "path": "03-development/src/taskq_plus/__main__.py",
+      "name": "__main__"
+    },
+    {
+      "path": "03-development/src/taskq_plus/cli/__init__.py",
+      "name": "__init__"
+    },
+    {
+      "path": "03-development/src/taskq_plus/cli/commands.py",
+      "name": "commands"
+    },
+    {
+      "path": "03-development/src/taskq_plus/cli/main.py",
+      "name": "main"
+    },
+    {
+      "path": "03-development/src/taskq_plus/config.py",
+      "name": "config"
+    },
+    {
+      "path": "03-development/src/taskq_plus/models/__init__.py",
+      "name": "__init__"
+    },
+    {
+      "path": "03-development/src/taskq_plus/models/errors.py",
+      "name": "errors"
+    },
+    {
+      "path": "03-development/src/taskq_plus/observability/__init__.py",
+      "name": "__init__"
+    },
+    {
+      "path": "03-development/src/taskq_plus/observability/export.py",
+      "name": "export"
+    },
+    {
+      "path": "03-development/src/taskq_plus/service/__init__.py",
+      "name": "__init__"
+    },
+    {
+      "path": "03-development/src/taskq_plus/service/breaker.py",
+      "name": "breaker"
+    },
+    {
+      "path": "03-development/src/taskq_plus/service/cache.py",
+      "name": "cache"
+    },
+    {
+      "path": "03-development/src/taskq_plus/service/dag.py",
+      "name": "dag"
+    },
+    {
+      "path": "03-development/src/taskq_plus/storage/__init__.py",
+      "name": "__init__"
+    },
+    {
+      "path": "03-development/src/taskq_plus/storage/breaker_store.py",
+      "name": "breaker_store"
+    },
+    {
+      "path": "03-development/src/taskq_plus/storage/cache_store.py",
+      "name": "cache_store"
+    }
+  ],
+  "mutation_survivors": [],
+  "integration_coverage": {
+    "gate": 2,
+    "score": 98.6
+  },
+  "threat_model": [
+    {
+      "threat_id": "T-01",
+      "category": "tampering",
+      "description": "shell metacharacters in the submitted command chain an extra command onto the intended one",
+      "owner_module": "taskq_plus.models.task",
+      "boundary": "TB-01"
+    },
+    {
+      "threat_id": "T-02",
+      "category": "elevation_of_privilege",
+      "description": "command string interpreted by a shell would grant shell-language power to task input",
+      "owner_module": "taskq_plus.service.executor",
+      "boundary": "TB-02"
+    },
+    {
+      "threat_id": "T-03",
+      "category": "denial_of_service",
+      "description": "a task that never exits pins a worker thread and blocks the queue indefinitely",
+      "owner_module": "taskq_plus.service.executor",
+      "boundary": "TB-02"
+    },
+    {
+      "threat_id": "T-04",
+      "category": "information_disclosure",
+      "description": "API keys or bearer tokens present in child stdout/stderr get persisted in plaintext",
+      "owner_module": "taskq_plus.observability.audit",
+      "boundary": "TB-02"
+    },
+    {
+      "threat_id": "T-05",
+      "category": "elevation_of_privilege",
+      "description": "a file path or URL in TASKQ_PLUGINS would turn plugin loading into arbitrary code execution",
+      "owner_module": "taskq_plus.service.plugins",
+      "boundary": "TB-03"
+    },
+    {
+      "threat_id": "T-06",
+      "category": "denial_of_service",
+      "description": "a plugin raising in pre_run/post_run aborts the queue run for every task",
+      "owner_module": "taskq_plus.service.plugins",
+      "boundary": "TB-03"
+    },
+    {
+      "threat_id": "T-07",
+      "category": "tampering",
+      "description": "concurrent or interrupted writes leave tasks.json truncated so recorded state is lost or altered",
+      "owner_module": "taskq_plus.storage.atomic",
+      "boundary": "TB-04"
+    },
+    {
+      "threat_id": "T-08",
+      "category": "repudiation",
+      "description": "executed commands cannot be attributed to the invocation that triggered them",
+      "owner_module": "taskq_plus.observability.audit",
+      "boundary": "TB-04"
+    },
+    {
+      "threat_id": "T-09",
+      "category": "tampering",
+      "description": "a corrupted store silently rebuilt on startup would erase evidence of the corruption",
+      "owner_module": "taskq_plus.storage.task_store",
+      "boundary": "TB-04"
+    }
+  ],
+  "sources": {
+    "declared": 3,
+    "crg_hubs": 0,
+    "mutation_survivors": 0,
+    "integration_coverage": true,
+    "threat_model": 9
+  }
+}

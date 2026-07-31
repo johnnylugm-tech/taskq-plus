@@ -1,0 +1,33 @@
+{
+  "fr": "ADR.md",
+  "review_status": "APPROVE",
+  "reason": "ADR.md v1.0.0 (679 lines, 13 records ADR-001..ADR-013) faithfully extracts every load-bearing decision from approved SAD.md §1–§9 and pairs each with rejected alternatives and traced FR/NFR. Verified alignment spot-by-spot against SAD.md: ADR-001 pydantic v2 + click pinned with == matches SAD §2.3 line 158 and §4 NFR-07 line 350; ADR-002 five-layer total order matches SAD §1 lines 51–56; ADR-003 config independence + Settings-as-argument matches SAD §1 lines 58–64 and §2.3 line 142; ADR-004 atomic.py primitives match SAD §2.3 line 171; ADR-005 Kahn layers + ThreadPoolExecutor match SAD §2.3 line 184; ADR-006 injected sleep matches SAD §2.3 line 192; ADR-008 shlex+argv execution and INJECTION_CHARS match SAD §2.3 line 162; ADR-009 PLUGIN_NAME_RE matches SAD §2.3 line 188; ADR-010 redaction ",
+  "citations": [
+    "02-architecture/adr/ADR.md:37",
+    "02-architecture/adr/ADR.md:51",
+    "02-architecture/adr/ADR.md:92",
+    "02-architecture/adr/ADR.md:138",
+    "02-architecture/adr/ADR.md:183",
+    "02-architecture/adr/ADR.md:230",
+    "02-architecture/adr/ADR.md:279",
+    "02-architecture/adr/ADR.md:322",
+    "02-architecture/adr/ADR.md:360",
+    "02-architecture/adr/ADR.md:407",
+    "02-architecture/adr/ADR.md:466",
+    "02-architecture/adr/ADR.md:515",
+    "02-architecture/adr/ADR.md:560",
+    "02-architecture/adr/ADR.md:608",
+    "02-architecture/adr/ADR.md:653",
+    "02-architecture/SAD.md:51",
+    "02-architecture/SAD.md:158",
+    "02-architecture/SAD.md:162",
+    "02-architecture/SAD.md:171",
+    "02-architecture/SAD.md:184"
+  ],
+  "docs_embedded": [
+    "SRS.md",
+    "SAD.md",
+    "ADR.md"
+  ],
+  "confidence": 0.9
+}

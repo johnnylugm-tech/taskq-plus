@@ -1,0 +1,24 @@
+{
+  "fr": "TEST_SPEC.md",
+  "review_status": "APPROVE",
+  "reason": "TEST_SPEC.md (476 lines) is a complete Named Test-Case Catalog covering all 8 FRs with happy_path + validation cases, the NFR Pattern Activation table is fully populated (8 patterns active: NP-04/06/07/08/09/10/13/15), every FR carries a Sub-assertions table with rule_id + predicate + applies_to, multi-scenario cases follow v2.13.0 split rule (FR-01.d 8 rows, FR-05.a 8 rows, FR-05.c 7 rows, etc.), state_mode declarations appear on FR-02.c/03.a/03.d/04.d/07.c + NFR-03.a/c/d, precondition for FR-06.b cycle scenario disambiguates the spec prose, and the Cross-Cutting split correctly separates integration-level NFRs (9 rows with concrete Inputs/Sub-assertions) from Unit/Static NFRs (20 rows in Deferred table). Both harness gates pass: check-test-spec-consistency = OK with 9 expected needs-revi",
+  "citations": [
+    "02-architecture/TEST_SPEC.md:73",
+    "02-architecture/TEST_SPEC.md:116",
+    "02-architecture/TEST_SPEC.md:381",
+    "02-architecture/TEST_SPEC.md:426",
+    "02-architecture/TEST_SPEC.md:452",
+    "01-requirements/SRS.md:60",
+    "02-architecture/SAD.md:37",
+    "02-architecture/adr/ADR.md:669",
+    "02-architecture/adr/ADR.md:676"
+  ],
+  "docs_embedded": [
+    "SRS.md",
+    "SAD.md",
+    "ADR.md",
+    "TEST_SPEC.md",
+    "SPEC.md"
+  ],
+  "confidence": 0.9
+}

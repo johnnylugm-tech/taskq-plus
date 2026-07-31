@@ -1,0 +1,11 @@
+ctx:
+  agent_id: GATE
+  phase: 3
+  fr_id: FR-06
+  trace_id: d23c24a4
+  timestamp: '2026-07-30T15:13:05.982906+00:00'
+decision: GATE_BLOCK
+reasoning: 'Gate 1: score=96.7, critical=0, high=0'
+scores:
+  gate_score: 96.7
+metadata: {}

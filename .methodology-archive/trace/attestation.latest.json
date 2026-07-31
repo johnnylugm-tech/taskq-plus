@@ -1,0 +1,180 @@
+{
+  "schema": "harness/traceability/attestation/v1",
+  "git_sha": "ac8a444fcfd13b49622d655b9ea6970efdea4ffa",
+  "content_sha256": "52e83b3d66f1e8a84639af0eba0e8b188904b2b432031bc564288f5e95416827",
+  "tool": "scripts/build_trace_attestation.py",
+  "overlay_used": null,
+  "overlay_errors": [],
+  "matrix": {
+    "schema_version": "harness/traceability/overlay/v1",
+    "project_id": "taskq-plus",
+    "completeness": {
+      "total_requirements": 8,
+      "srs_coverage": "100.0%",
+      "code_coverage": "100.0%",
+      "test_coverage": "100.0%",
+      "verification_rate": "100.0%",
+      "total_links": 67,
+      "missing_mappings": {
+        "fr_without_srs": [],
+        "fr_without_code": [],
+        "fr_without_test": []
+      }
+    },
+    "missing": {
+      "fr_without_srs": [],
+      "fr_without_code": [],
+      "fr_without_test": []
+    },
+    "requirements": {
+      "FR-01": {
+        "fr_id": "FR-01",
+        "status": "verified",
+        "srs_section": "SAD.md",
+        "code_files": [
+          "03-development/src/taskq_plus/__init__.py",
+          "03-development/src/taskq_plus/cli/__init__.py",
+          "03-development/src/taskq_plus/cli/commands.py",
+          "03-development/src/taskq_plus/models/__init__.py",
+          "03-development/src/taskq_plus/models/task.py",
+          "03-development/src/taskq_plus/storage/__init__.py",
+          "03-development/src/taskq_plus/storage/atomic.py",
+          "03-development/src/taskq_plus/storage/task_store.py",
+          "03-development/tests/test_phase4_coverage_gaps.py"
+        ],
+        "test_files": [
+          "03-development/tests/test_fr01.py"
+        ],
+        "sad_module": "—",
+        "priority": "HIGH"
+      },
+      "FR-02": {
+        "fr_id": "FR-02",
+        "status": "verified",
+        "srs_section": "SAD.md",
+        "code_files": [
+          "03-development/src/taskq_plus/cli/commands.py",
+          "03-development/src/taskq_plus/models/errors.py",
+          "03-development/src/taskq_plus/service/__init__.py",
+          "03-development/src/taskq_plus/service/executor.py",
+          "03-development/tests/test_bug_hunt_repro.py",
+          "03-development/tests/test_phase4_coverage_gaps.py"
+        ],
+        "test_files": [
+          "03-development/tests/test_fr02.py"
+        ],
+        "sad_module": "—",
+        "priority": "HIGH"
+      },
+      "FR-03": {
+        "fr_id": "FR-03",
+        "status": "verified",
+        "srs_section": "SAD.md",
+        "code_files": [
+          "03-development/src/taskq_plus/cli/commands.py",
+          "03-development/src/taskq_plus/service/breaker.py",
+          "03-development/src/taskq_plus/service/executor.py",
+          "03-development/src/taskq_plus/storage/atomic.py",
+          "03-development/src/taskq_plus/storage/breaker_store.py",
+          "03-development/tests/test_bug_hunt_repro.py",
+          "03-development/tests/test_phase4_coverage_gaps.py"
+        ],
+        "test_files": [
+          "03-development/tests/test_fr03.py"
+        ],
+        "sad_module": "—",
+        "priority": "HIGH"
+      },
+      "FR-04": {
+        "fr_id": "FR-04",
+        "status": "verified",
+        "srs_section": "SAD.md",
+        "code_files": [
+          "03-development/src/taskq_plus/cli/commands.py",
+          "03-development/src/taskq_plus/service/cache.py",
+          "03-development/src/taskq_plus/service/executor.py",
+          "03-development/src/taskq_plus/storage/cache_store.py"
+        ],
+        "test_files": [
+          "03-development/tests/test_fr04.py"
+        ],
+        "sad_module": "—",
+        "priority": "HIGH"
+      },
+      "FR-05": {
+        "fr_id": "FR-05",
+        "status": "verified",
+        "srs_section": "SAD.md",
+        "code_files": [
+          "03-development/src/taskq_plus/__main__.py",
+          "03-development/src/taskq_plus/cli/commands.py",
+          "03-development/src/taskq_plus/cli/main.py",
+          "03-development/src/taskq_plus/config.py",
+          "03-development/src/taskq_plus/models/errors.py",
+          "03-development/tests/test_fr05.py",
+          "03-development/tests/test_phase4_coverage_gaps.py"
+        ],
+        "test_files": [
+          "03-development/tests/test_fr05.py"
+        ],
+        "sad_module": "—",
+        "priority": "HIGH"
+      },
+      "FR-06": {
+        "fr_id": "FR-06",
+        "status": "verified",
+        "srs_section": "SAD.md",
+        "code_files": [
+          "03-development/src/taskq_plus/cli/commands.py",
+          "03-development/src/taskq_plus/service/dag.py",
+          "03-development/src/taskq_plus/service/executor.py",
+          "03-development/tests/test_fr06.py"
+        ],
+        "test_files": [
+          "03-development/tests/test_fr06.py"
+        ],
+        "sad_module": "—",
+        "priority": "HIGH"
+      },
+      "FR-07": {
+        "fr_id": "FR-07",
+        "status": "verified",
+        "srs_section": "SAD.md",
+        "code_files": [
+          "03-development/src/taskq_plus/cli/commands.py",
+          "03-development/src/taskq_plus/cli/main.py",
+          "03-development/src/taskq_plus/service/executor.py",
+          "03-development/src/taskq_plus/service/plugins.py",
+          "03-development/tests/test_bug_hunt_repro.py",
+          "03-development/tests/test_phase4_coverage_gaps.py"
+        ],
+        "test_files": [
+          "03-development/tests/test_fr07.py"
+        ],
+        "sad_module": "—",
+        "priority": "HIGH"
+      },
+      "FR-08": {
+        "fr_id": "FR-08",
+        "status": "verified",
+        "srs_section": "SAD.md",
+        "code_files": [
+          "03-development/src/taskq_plus/cli/commands.py",
+          "03-development/src/taskq_plus/cli/main.py",
+          "03-development/src/taskq_plus/observability/__init__.py",
+          "03-development/src/taskq_plus/observability/audit.py",
+          "03-development/src/taskq_plus/observability/export.py",
+          "03-development/src/taskq_plus/service/executor.py",
+          "03-development/tests/test_bug_hunt_repro.py",
+          "03-development/tests/test_phase4_coverage_gaps.py"
+        ],
+        "test_files": [
+          "03-development/tests/test_fr08.py"
+        ],
+        "sad_module": "—",
+        "priority": "HIGH"
+      }
+    },
+    "annotations": {}
+  }
+}

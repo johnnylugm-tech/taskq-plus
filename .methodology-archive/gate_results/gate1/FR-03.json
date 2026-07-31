@@ -1,0 +1,32 @@
+{
+  "gate": 1,
+  "phase": 8,
+  "fr_id": "FR-01",
+  "overall_score": 100.0,
+  "quality_complete": true,
+  "rounds_used": 1,
+  "breakdown": {
+    "linting": {
+      "score": 100.0,
+      "threshold": 100,
+      "tool_evidence": "All checks passed!"
+    },
+    "type_safety": {
+      "score": 100.0,
+      "threshold": 100,
+      "tool_evidence": "{\"version\": \"1.1.409\", \"time\": \"1785524263319\", \"generalDiagnostics\": [], \"summary\": {\"filesAnalyzed\": 23, \"errorCount\": 0, \"warningCount\": 0, \"informationCount\": 0, \"timeInSec\": 0.741}}"
+    },
+    "test_coverage": {
+      "score": 100.0,
+      "threshold": 100,
+      "tests_passed": 140,
+      "tests_failed": 0,
+      "tests_skipped": 0,
+      "tool_evidence": "============================= test session starts ==============================\nplatform darwin -- Python 3.11.15, pytest-8.4.2, pluggy-1.6.0\ncollected 140 items\n\n03-development/tests/test_fr01.py ...................................... [ 27%]\n........................................................................ [ 78%]\n..............................                                           [100%]\n\n============================== 140 passed in 1.08s ===============================\ncoverage totals: percent_covered=100.0, missing_lines=0, spec_cov_pct=100 (140/140 required tests exist)"
+    }
+  },
+  "enforcer_sha": "82685731fccad3bbde277120813aea546dc63a8c",
+  "composite_score": 100.0,
+  "verdict": "PASS",
+  "passed": true
+}

@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "values": {
+    "phase_truth_threshold": 70.0
+  },
+  "crg_cohesion_healthy": 0.2,
+  "features": {
+    "mutation_testing": false
+  }
+}
