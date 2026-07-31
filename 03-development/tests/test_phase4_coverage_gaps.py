@@ -85,8 +85,6 @@ def test_run_cmd_rewraps_service_plugin_load_error(taskq_home, monkeypatch):
     # Patch execute_with_cache to raise the SERVICE-level PluginLoadError.
     # The CLI must rewrap it into cli.commands.PluginLoadError so the
     # click wrapper (cli/main.py:238-240) can map it to exit 6.
-    from taskq_plus.cli import commands as cli_commands
-
     def _raise_svc(*args, **kwargs):
         raise _SvcPLE("service-side plugin load failed")
 

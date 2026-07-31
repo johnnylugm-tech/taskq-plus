@@ -18,7 +18,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-import pytest
 from hypothesis import HealthCheck, given, settings, strategies as st
 
 # Make src/ importable so the property tests can reach the SAB-bound modules.
