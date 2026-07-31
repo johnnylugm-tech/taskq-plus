@@ -10,11 +10,13 @@ import datetime as dt
 import json
 import os
 import tempfile
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Dict, FrozenSet, List, Optional
+from typing import Any, Dict, FrozenSet, Iterator, List, Optional
 
 
 TASKS_FILENAME = "tasks.json"
+LOCK_FILENAME = "tasks.json.lock"
 UTC = dt.timezone.utc
 
 # Task statuses that occupy a name slot — finished tasks release theirs.
@@ -29,6 +31,35 @@ def _home() -> Path:
 def tasks_path() -> Path:
     """Return the tasks.json path under TASKQ_HOME."""
     return _home() / TASKS_FILENAME
+
+
+def lock_path() -> Path:
+    """Return the advisory-lock path guarding tasks.json read-modify-write."""
+    return _home() / LOCK_FILENAME
+
+
+@contextmanager
+def _store_write_lock() -> Iterator[None]:
+    """Hold an exclusive inter-process lock over the tasks.json mutation.
+
+    Uses `fcntl.flock` on a sidecar lock file (POSIX). The lock is advisory
+    and process-scoped, which is exactly the FR-01 requirement: concurrent
+    `submit` invocations serialise their load → append → save cycles instead
+    of racing and losing records.
+
+    [FR-01] [NFR-03]
+    Citations: SPEC.md#L206 (並發寫入不得遺失已記錄狀態).
+    """
+    import fcntl
+
+    path = lock_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a+", encoding="utf-8") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
 
 
 def _now_iso() -> str:
@@ -99,9 +130,19 @@ def find_by_id(task_id: str) -> Optional[Dict[str, Any]]:
 
 
 def append_task(task: Dict[str, Any]) -> Dict[str, Any]:
-    """Append a fully-formed task record to disk atomically."""
+    """Append a fully-formed task record to disk atomically.
+
+    The load → append → save cycle runs under an inter-process file lock, so
+    two concurrent `submit` processes cannot both read the same base list and
+    have the second `os.replace` discard the first one's record (NFR-03: 並發
+    寫入不得遺失已記錄狀態).
+
+    [FR-01] [NFR-03]
+    Citations: SPEC.md#L206 (資料檔原子寫;並發寫入後已記錄狀態不遺失).
+    """
     task.setdefault("created_at", _now_iso())
-    tasks = load_tasks()
-    tasks.append(task)
-    save_tasks(tasks)
+    with _store_write_lock():
+        tasks = load_tasks()
+        tasks.append(task)
+        save_tasks(tasks)
     return task

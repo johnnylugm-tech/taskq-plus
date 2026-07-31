@@ -207,6 +207,9 @@ def submit(
     except commands.SubmitValidationError as exc:
         _emit_error(str(exc))
         return EXIT_VALIDATION
+    except commands.StoreCorrupted as exc:
+        _emit_error(f"store corrupted: {exc}")
+        return EXIT_INTERNAL_ERROR
     except commands.GraphError as exc:
         _emit_error(str(exc))
         return EXIT_GRAPH_ERROR
@@ -232,6 +235,9 @@ def run(
     except commands.RunValidationError as exc:
         _emit_error(str(exc))
         return EXIT_VALIDATION
+    except commands.PluginLoadError as exc:
+        _emit_error(str(exc))
+        return EXIT_PLUGIN_LOAD_FAILED
     except commands.RunInternalError as exc:
         _emit_error(str(exc))
         return EXIT_INTERNAL_ERROR
@@ -259,6 +265,9 @@ def status(ctx: click.Context, task_id: str) -> int:
     """
     try:
         payload = commands.status_cmd(task_id)
+    except commands.StoreCorrupted as exc:
+        _emit_error(f"store corrupted: {exc}")
+        return EXIT_INTERNAL_ERROR
     except commands.StatusValidationError as exc:
         _emit_error(str(exc))
         return EXIT_VALIDATION

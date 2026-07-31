@@ -691,12 +691,15 @@ class TestRunCmdHandler:
 
     def test_run_all_returns_dict(self, taskq_home, monkeypatch):
         # Stub exec_run_all so we don't actually fork processes.
+        # `run_all` returns the CLI exit code (0 here) so the FR-03 breaker
+        # rejection (exit 3) can propagate through the batch path too.
         from taskq_plus.service import executor as exec_mod
 
         calls = []
 
         def fake_run_all():
             calls.append("ran")
+            return cli_commands.EXIT_OK
 
         monkeypatch.setattr(exec_mod, "run_all", fake_run_all)
         # re-import bound name in commands
@@ -1193,8 +1196,9 @@ class TestLegacyRunDispatch:
     def test_run_all_returns_ok(self, taskq_home, monkeypatch):
         from taskq_plus.service import executor as exec_mod
 
-        monkeypatch.setattr(exec_mod, "run_all", lambda: None)
-        monkeypatch.setattr(cli_commands, "exec_run_all", lambda: None)
+        # `run_all` reports the batch exit code (FR-03 breaker → 3).
+        monkeypatch.setattr(exec_mod, "run_all", lambda: exec_mod.EXIT_OK)
+        monkeypatch.setattr(cli_commands, "exec_run_all", lambda: cli_commands.EXIT_OK)
         code = cli_commands._run(["--all"])
         assert code == cli_commands.EXIT_OK
 

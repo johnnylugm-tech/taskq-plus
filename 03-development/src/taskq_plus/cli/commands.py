@@ -26,7 +26,7 @@ from pydantic import ValidationError
 
 from taskq_plus.models.task import TaskSubmission, generate_task_id
 from taskq_plus.observability import export as obs_export
-from taskq_plus.observability.audit import current_logger
+from taskq_plus.observability.audit import current_logger, redact_detail
 from taskq_plus.service import dag
 from taskq_plus.service.executor import run_all as exec_run_all
 from taskq_plus.storage.task_store import (
@@ -99,14 +99,17 @@ class PluginLoadError(HandlerError):
 # Misc helpers (shared by the 8 FR-05 handlers and the legacy argparse path).
 # ---------------------------------------------------------------------------
 def _emit_audit(event: str, payload: dict, taskq_home: Path) -> None:
-    """Append-only audit log write (FR-08-shaped).
+    """Append-only audit log write (FR-08-shaped), NFR-04 redacted.
 
-    [FR-01] [FR-08]
-    Citations: SPEC.md §3 FR-01 ("Write a submit audit event (FR-08)").
+    [FR-01] [FR-08] [NFR-04]
+    Citations:
+      - SPEC.md §3 FR-01 ("Write a submit audit event (FR-08)").
+      - SPEC.md#L215 (遮蔽發生在寫入前 — `audit.log` 同樣落盤).
     """
     audit_path = Path(taskq_home) / "audit.log"
     line = json.dumps(
-        {"event": event, "ts": _now_iso(), **payload}, ensure_ascii=False
+        redact_detail({"event": event, "ts": _now_iso(), **payload}),
+        ensure_ascii=False,
     )
     with audit_path.open("a", encoding="utf-8") as fh:
         fh.write(line + "\n")
@@ -170,6 +173,22 @@ def _strict_load_tasks() -> list:
     raise StoreCorrupted("tasks.json is not a task list")
 
 
+def _assert_store_intact() -> None:
+    """Raise `StoreCorrupted` when `tasks.json` exists but is not a task list.
+
+    SPEC §7 requires the corruption to be detected at startup and reported as
+    exit 1 — the corrupt file is the evidence and must NOT be silently
+    rebuilt. `submit` / `status` call this before touching the store, because
+    the lenient `task_store.load_tasks()` degrades to `[]` (which would let a
+    subsequent `save_tasks` overwrite the evidence).
+
+    [FR-01] [NFR-03]
+    Citations: SPEC.md#L392 (損壞的 `tasks.json` → exit 1 + stderr
+    `store corrupted`,**不**靜默重建).
+    """
+    _strict_load_tasks()
+
+
 # FR-07 plugin allowlist regex — NFR-02.c "rejects path-form names".
 _PLUGIN_NAME_RE = re.compile(r"^[A-Za-z0-9_]+$")
 
@@ -210,7 +229,9 @@ def submit_cmd(
       - SPEC.md §3 FR-06 (`--after` repeatable; cycle → exit 5 + cycle path;
         chain depth > `TASKQ_MAX_DAG_DEPTH` → exit 5).
       - SPEC.md §7 (exit-code map: graph error → 5).
+      - SPEC.md#L392 (corrupt `tasks.json` → exit 1, never silently rebuilt).
     """
+    _assert_store_intact()
     deps: list[str] = list(after) if after else []
 
     try:
@@ -316,8 +337,7 @@ def run_cmd(
         TASKQ_CACHE_TTL).
     """
     if run_all:
-        exec_run_all()
-        return {"ran_all": True, "exit_code": EXIT_OK}
+        return {"ran_all": True, "exit_code": exec_run_all()}
 
     if not task_id:
         raise RunValidationError(
@@ -332,8 +352,14 @@ def run_cmd(
     # --cached the executor still runs and a `done` result is written back
     # into cache.json so subsequent --cached runs can replay it.
     from taskq_plus.service.cache import execute_with_cache
+    from taskq_plus.service.plugins import PluginLoadError as _ServicePluginLoadError
 
-    result = execute_with_cache(task_id, use_cache=bool(use_cache))
+    try:
+        result = execute_with_cache(task_id, use_cache=bool(use_cache))
+    except _ServicePluginLoadError as exc:
+        # FR-07 / SPEC §7: an illegal or unimportable plugin name is a load
+        # failure → exit 6, not the generic internal-error exit 1.
+        raise PluginLoadError(f"plugin load failed: {exc}") from exc
     if result is None:
         raise RunInternalError("execution returned no result")
 
@@ -358,10 +384,13 @@ def status_cmd(task_id: str) -> dict:
     """Return the full task record for `task_id`.
 
     [FR-01] [FR-05]
-    Citations: SPEC.md §3 FR-05 (status outputs full fields of that task).
+    Citations:
+      - SPEC.md §3 FR-05 (status outputs full fields of that task).
+      - SPEC.md#L392 (corrupt `tasks.json` → exit 1, never silently rebuilt).
     """
     if not task_id:
         raise StatusValidationError("task_id required")
+    _assert_store_intact()
     rec = find_by_id(task_id)
     if rec is None:
         raise StatusValidationError(f"task id {task_id!r} does not exist")
@@ -499,7 +528,13 @@ def clear_cmd() -> dict:
     """
     home = Path(os.environ.get("TASKQ_HOME", ".")).resolve()
     removed: list[str] = []
-    for filename in ("tasks.json", "cache.json", "breaker.json", "audit.log"):
+    for filename in (
+        "tasks.json",
+        "tasks.json.lock",
+        "cache.json",
+        "breaker.json",
+        "audit.log",
+    ):
         path = home / filename
         if path.exists():
             try:
@@ -583,8 +618,7 @@ def _run(argv: Sequence[str]) -> int:
     args = parser.parse_args(list(argv))
 
     if args.run_all:
-        exec_run_all()
-        return EXIT_OK
+        return exec_run_all()
     if not args.task_id:
         print(
             "error: task_id required (or pass --all to execute every pending task)",

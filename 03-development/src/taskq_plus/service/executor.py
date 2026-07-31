@@ -53,7 +53,7 @@ from taskq_plus.storage.task_store import (
     load_tasks,
     save_tasks,
 )
-from taskq_plus.observability.audit import current_logger
+from taskq_plus.observability.audit import current_logger, redact_detail, redact_text
 
 
 # ---------------------------------------------------------------------------
@@ -159,15 +159,17 @@ def _emit_audit(event: str, payload: Dict[str, Any]) -> None:
     `plugin_error` events without importing the CLI module (which would
     cycle back through `service.executor`).
 
-    [FR-07] [FR-08]
+    [FR-07] [FR-08] [NFR-04]
     Citations:
       - SPEC.md §3 FR-08 (audit events appended to $TASKQ_HOME).
       - SPEC.md §3 FR-07 (plugin_error events emitted per caught hook failure).
+      - SPEC.md#L215 (遮蔽發生在寫入前 — 這個舊日誌同樣落盤,必須先 redact).
     """
     home = Path(os.environ.get("TASKQ_HOME", ".")).resolve()
     audit_path = home / "audit.log"
     line = json.dumps(
-        {"event": event, "ts": _now_iso(), **payload}, ensure_ascii=False
+        redact_detail({"event": event, "ts": _now_iso(), **payload}),
+        ensure_ascii=False,
     )
     with audit_path.open("a", encoding="utf-8") as fh:
         fh.write(line + "\n")
@@ -264,14 +266,21 @@ def _build_result(
 ) -> Dict[str, Any]:
     """Assemble the standard task-result dict written to the store.
 
-    [FR-02]
-    Citations: SPEC.md §3 FR-02 (result fields; tail bounded to last 2000 chars).
+    NFR-04 redaction runs HERE, before the dict reaches `_set_status` /
+    `save_tasks`, so a secret printed by the child never lands in
+    `tasks.json` in plaintext.
+
+    [FR-02] [NFR-04]
+    Citations:
+      - SPEC.md §3 FR-02 (result fields; tail bounded to last 2000 chars).
+      - SPEC.md#L214 (`stdout_tail` / `stderr_tail` 落盤前整行以 `[REDACTED]` 取代).
+      - SPEC.md#L215 (遮蔽發生在寫入前,不是讀取後).
     """
     return {
         "status": status,
         "exit_code": exit_code,
-        "stdout_tail": _truncate_tail(stdout),
-        "stderr_tail": _truncate_tail(stderr),
+        "stdout_tail": redact_text(_truncate_tail(stdout)),
+        "stderr_tail": redact_text(_truncate_tail(stderr)),
         "duration_ms": duration_ms,
         "finished_at": _now_iso(),
     }
@@ -380,18 +389,41 @@ def _execute_or_block(task_id: str) -> Optional[Dict[str, Any]]:
     `blocked` status here and blocks in turn. A blocked task never shells out,
     so it also never feeds the FR-03 breaker failure count.
 
-    [FR-06]
+    Every outcome is journalled (FR-08): `blocked` for a gated task, and
+    `run_start` / `run_end` around an executed one, so a batch run is as
+    attributable as a single-task run (T-08).
+
+    [FR-06] [FR-08]
     Citations:
       - SPEC.md §3 FR-06 (dependency result not `done` → downstream `blocked`,
         not executed, not counted toward breaker failure count).
+      - SPEC.md#L169 (事件種類:run_start / run_end / blocked).
     """
-    if _unmet_dependencies(task_id):
+    unmet = _unmet_dependencies(task_id)
+    if unmet:
         _set_status(task_id, {"status": "blocked"})
+        current_logger().emit(
+            "blocked", task_id=task_id, detail={"unmet_dependencies": unmet}
+        )
         return None
-    return execute_task(task_id)
+
+    record = dict(find_by_id(task_id) or {"id": task_id})
+    current_logger().emit(
+        "run_start", task_id=task_id, detail={"command": record.get("command", "")}
+    )
+    result = execute_task(task_id)
+    current_logger().emit(
+        "run_end",
+        task_id=task_id,
+        detail={
+            "status": (result or {}).get("status"),
+            "exit_code": (result or {}).get("exit_code"),
+        },
+    )
+    return result
 
 
-def run_all() -> None:
+def run_all() -> int:
     """Batch entry — execute every pending task via ThreadPoolExecutor.
 
     Tasks are dispatched in Kahn topological layers: a layer's tasks may run
@@ -400,17 +432,39 @@ def run_all() -> None:
     is marked `blocked` instead of being executed. All store writes share the
     module Lock.
 
-    [FR-02] [FR-06]
+    The FR-03 breaker gates this path exactly as it gates the single-task
+    path: while OPEN (inside cooldown) nothing is spawned and the caller gets
+    exit 3 + `breaker open` on stderr. Returns the CLI exit code.
+
+    [FR-02] [FR-03] [FR-06] [FR-08]
     Citations:
       - SPEC.md §3 FR-02 (ThreadPoolExecutor + DAG topological order).
       - SPEC.md §3 FR-02 (shared Lock over store).
+      - SPEC.md#L113 (`OPEN` 期間**任何** `run` 立即拒絕:exit 3 + stderr
+        `breaker open`,不執行 subprocess).
       - SPEC.md §3 FR-06 (Kahn topological sort; same-layer concurrency;
         dependency not `done` → downstream `blocked`).
     """
+    config = _load_retry_config()
+    breaker = Breaker.from_record(
+        read_breaker(),
+        threshold=config.breaker_threshold,
+        cooldown_seconds=config.breaker_cooldown_seconds,
+    )
+    if not breaker.allow_request():
+        current_logger().emit(
+            "breaker_open",
+            task_id=None,
+            detail={"cooldown_seconds": config.breaker_cooldown_seconds},
+        )
+        print(BREAKER_OPEN_MESSAGE, file=sys.stderr)
+        return EXIT_BREAKER_OPEN
+    write_breaker(breaker.to_record())
+
     tasks = load_tasks()
     pending = [t for t in tasks if t.get("status") == "pending"]
     if not pending:
-        return
+        return EXIT_OK
     levels = _topological_levels(pending)
     max_workers = _resolve_max_workers()
     with ThreadPoolExecutor(max_workers=max_workers) as pool:
@@ -418,6 +472,7 @@ def run_all() -> None:
             futures = [pool.submit(_execute_or_block, tid) for tid in level_ids]
             for fut in futures:
                 fut.result()
+    return EXIT_OK
 
 
 # ---------------------------------------------------------------------------

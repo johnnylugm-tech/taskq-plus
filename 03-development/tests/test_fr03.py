@@ -1006,15 +1006,17 @@ def test_taskq_executor_run_all_respects_layers_and_blocks(taskq_home):
 
 
 def test_taskq_executor_run_all_is_noop_without_pending_tasks(taskq_home):
-    """run_all returns immediately when nothing is pending."""
-    from taskq_plus.service.executor import run_all
+    """run_all returns exit 0 immediately when nothing is pending."""
+    from taskq_plus.service.executor import EXIT_OK, run_all
     from taskq_plus.storage.task_store import find_by_id
 
     _seed_pending(taskq_home, task_id="already", command="echo hi", status="done")
 
     prior = _with_home(taskq_home)
     try:
-        assert run_all() is None, "run_all has no return value"
+        # `run_all` returns the batch CLI exit code so an OPEN breaker can
+        # reject the batch path with exit 3 (SPEC.md#L113).
+        assert run_all() == EXIT_OK, "an empty batch is a successful no-op"
         rec = find_by_id("already")
     finally:
         _restore_home(prior)
