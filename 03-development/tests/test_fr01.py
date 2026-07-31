@@ -802,6 +802,26 @@ class TestRunCmdHandler:
         result = run_cmd(task_id="abcdef01")
         assert result["exit_code"] == cli_commands.EXIT_FAILED
 
+    def test_run_plugin_load_error_raises_plugin_load_error(
+        self, taskq_home, monkeypatch
+    ):
+        """execute_with_cache raising PluginLoadError → PluginLoadError (lines 359-362).
+
+        FR-07: an illegal or unimportable plugin name during execute must surface
+        as PluginLoadError (exit 6), not the generic RunInternalError.
+        """
+        append_task({"id": "abcdef01", "command": "echo hi", "status": "pending"})
+        from taskq_plus.service import cache as cache_mod
+        from taskq_plus.service.plugins import PluginLoadError as ServicePluginLoadError
+
+        def fake_execute_with_cache(task_id, use_cache=True):
+            raise ServicePluginLoadError("bad plugin name")
+
+        monkeypatch.setattr(cache_mod, "execute_with_cache", fake_execute_with_cache)
+        with pytest.raises(cli_commands.PluginLoadError) as exc_info:
+            run_cmd(task_id="abcdef01")
+        assert "plugin load failed" in str(exc_info.value)
+
 
 class TestStatusCmdHandler:
     """status_cmd (FR-05) — full record + validation errors."""
