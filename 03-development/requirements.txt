@@ -1,0 +1,6 @@
+# taskq-plus runtime dependencies (NFR-07.b / SPEC §1).
+# Pinned with == for score reproducibility across environments.
+# All licenses are in {MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0}
+# per SRS.md AC-NFR-07.a.
+click==8.1.8
+pydantic==2.13.4

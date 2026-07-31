@@ -1,0 +1,66 @@
+[importlinter]
+# NFR-06 5-layer contract (cli > observability > service > storage > models;
+# config is an independence module). The forbidden contracts below are
+# the part that is machine-checked today: each layer is forbidden from
+# importing any layer ABOVE it (per SAD §1 "imports downward only"), and
+# config is forbidden from importing any layer. The single deliberate
+# exception — service.executor → observability.audit — is registered
+# under test_nfr06_b's human-review path (see SAD §2.3) and is NOT
+# forbidden here.
+root_packages =
+    taskq_plus
+
+[importlinter:contract:cli-imports-forbidden-upward]
+name = CLI may not import itself (no cycles via self-import)
+type = forbidden
+source_modules =
+    taskq_plus.cli
+forbidden_modules =
+    taskq_plus.cli
+
+[importlinter:contract:observability-imports-forbidden-upward]
+name = Observability may not import CLI (preserves L4 > L5)
+type = forbidden
+source_modules =
+    taskq_plus.observability
+forbidden_modules =
+    taskq_plus.cli
+
+[importlinter:contract:service-imports-forbidden-upward]
+name = Service may not import CLI / observability (preserves L3 > L5,L4)
+type = forbidden
+source_modules =
+    taskq_plus.service
+forbidden_modules =
+    taskq_plus.cli
+    taskq_plus.observability
+# Single deliberate exception: service.executor imports observability.audit
+# to write the audit trail at the boundary (SAD §2.3 audit-trail position).
+# Listed by exact dotted path so the lint-imports exemption cannot widen
+# into a wildcard `ignore_imports`.
+ignore_imports =
+    taskq_plus.service.executor -> taskq_plus.observability.audit
+
+[importlinter:contract:storage-imports-forbidden-upward]
+name = Storage may not import CLI / observability / service (preserves L2)
+type = forbidden
+source_modules =
+    taskq_plus.storage
+forbidden_modules =
+    taskq_plus.cli
+    taskq_plus.observability
+    taskq_plus.service
+
+[importlinter:contract:config-is-independence-module]
+name = config.py imports no taskq_plus layer (independence module)
+type = forbidden
+source_modules =
+    taskq_plus.config
+forbidden_modules =
+    taskq_plus.cli
+    taskq_plus.observability
+    taskq_plus.service
+    taskq_plus.storage
+    taskq_plus.models
+
+
