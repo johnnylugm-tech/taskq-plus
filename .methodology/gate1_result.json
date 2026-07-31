@@ -1,7 +1,7 @@
 {
   "gate": 1,
   "phase": 5,
-  "fr_id": "FR-07",
+  "fr_id": "FR-08",
   "overall_score": 100.0,
   "quality_complete": true,
   "rounds_used": 1,
@@ -9,20 +9,20 @@
     "linting": {
       "score": 100.0,
       "threshold": 100,
-      "tool_evidence": "All checks passed! (ruff check 03-development/src/ --extend-ignore RUF001,RUF002,RUF003)"
+      "tool_evidence": "All checks passed!"
     },
     "type_safety": {
       "score": 100.0,
       "threshold": 100,
-      "tool_evidence": "{\"version\":\"1.1.409\",\"generalDiagnostics\":[],\"summary\":{\"filesAnalyzed\":23,\"errorCount\":0,\"warningCount\":0,\"informationCount\":0,\"timeInSec\":0.697}}"
+      "tool_evidence": "{\"version\": \"1.1.409\", \"time\": \"1785501297335\", \"generalDiagnostics\": [], \"summary\": {\"filesAnalyzed\": 23, \"errorCount\": 0, \"warningCount\": 0, \"informationCount\": 0, \"timeInSec\": 0.694}}"
     },
     "test_coverage": {
       "score": 100.0,
       "threshold": 100,
-      "tests_passed": 9,
+      "tests_passed": 16,
       "tests_failed": 0,
       "tests_skipped": 0,
-      "tool_evidence": "9 passed in 0.63s\nCoverage: plugins.py percent_covered=100.0 (67/67 lines, missing_lines=0)\nSpec coverage: 5/5 required tests present (test_fr07_a,b,c,d,e)"
+      "tool_evidence": "============================= test session starts ==============================\nplatform darwin -- Python 3.11.15, pytest-8.4.2, pluggy-1.6.0\ncollected 16 items\n\n03-development/tests/test_fr08.py ................                       [100%]\n\n============================== 16 passed in 1.37s ==============================\n\nCoverage: audit.py 100% (64/64), export.py 100% (93/93), totals 100% (157/157)\nSpec coverage: 6/6 (100%) - all required tests exist (test_fr08_a, test_fr08_b, test_fr08_c[json,csv,md], test_fr08_d)"
     }
   },
   "enforcer_sha": "b45cf041380596b7cfaaf63fa12c7a7502a580cd",
