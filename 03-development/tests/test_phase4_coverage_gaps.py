@@ -22,7 +22,6 @@ Lines covered (Phase 4 gap-closure round 1):
 
 from __future__ import annotations
 
-import json
 import os
 import subprocess
 import sys
