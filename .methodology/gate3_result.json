@@ -108,9 +108,9 @@
   "enforcer_sha": "0d9aa16f8ee8c25c4d7f8a9b3cb88dace506e2c9-dirty",
   "crg_review_context": {
     "status": "ok",
-    "summary": "Review context for 20 changed file(s):\n  - Risk: low\n  - 0 impacted nodes in 0 files",
+    "summary": "Review context for 38 changed file(s):\n  - Risk: low\n  - 0 impacted nodes in 0 files",
     "risk": "low",
-    "changed_file_count": 20,
+    "changed_file_count": 38,
     "impacted_file_count": 0,
     "key_entities": [
       "/Users/johnny/projects/taskq-plus/03-development/src/taskq_plus/__main__.py",
@@ -119,7 +119,7 @@
       "load_settings",
       "resolve_home"
     ],
-    "test_gaps": 68,
+    "test_gaps": 76,
     "next_tool_suggestions": [
       "detect_changes",
       "get_affected_flows",
@@ -127,20 +127,20 @@
     ],
     "context_savings": {
       "estimated": true,
-      "saved_tokens": 33094,
+      "saved_tokens": 146943,
       "saved_percent": 100
     }
   },
   "crg_impact_radius": {
     "status": "ok",
-    "summary": "Blast radius for 20 changed file(s):\n  - 94 nodes directly changed\n  - 0 nodes impacted (within 2 hops)\n  - 0 additional files affected",
+    "summary": "Blast radius for 38 changed file(s):\n  - 142 nodes directly changed\n  - 0 nodes impacted (within 2 hops)\n  - 0 additional files affected",
     "risk": "low",
     "impacted_file_count": 0,
     "key_entities": [],
     "truncated": false,
     "context_savings": {
       "estimated": true,
-      "saved_tokens": 33155,
+      "saved_tokens": 147004,
       "saved_percent": 100
     }
   },
@@ -172,19 +172,19 @@
         "criticality": 0.37
       },
       {
-        "name": "write_cache",
-        "criticality": 0.37
-      },
-      {
-        "name": "read_cache",
-        "criticality": 0.37
-      },
-      {
         "name": "write_breaker",
         "criticality": 0.37
       },
       {
         "name": "read_breaker",
+        "criticality": 0.37
+      },
+      {
+        "name": "write_cache",
+        "criticality": 0.37
+      },
+      {
+        "name": "read_cache",
         "criticality": 0.37
       }
     ]

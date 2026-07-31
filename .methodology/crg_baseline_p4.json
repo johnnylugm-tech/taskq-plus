@@ -3,8 +3,8 @@
     "score": 100.0,
     "healthy": 12,
     "total": 12,
-    "total_all": 12,
-    "excluded_test_communities": 0,
+    "total_all": 13,
+    "excluded_test_communities": 1,
     "unhealthy": [],
     "_cohesion_threshold": 0.2,
     "_community_oversized": 50,
@@ -15,6 +15,6 @@
   "large_functions_penalty": 0,
   "architecture_score": 100.0,
   "_source": "framework-independent",
-  "_baseline_sha": "0b108ef368ef8f921ee12e730c9f7b8f3e53394b",
+  "_baseline_sha": "8ca439f0bfc5476d80da57b55ac15eaa06076afa",
   "_baseline_phase": 4
 }

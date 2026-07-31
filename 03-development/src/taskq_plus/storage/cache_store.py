@@ -61,20 +61,28 @@ def write_cache(record: Dict[str, Any]) -> None:
     """
     path = cache_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(
-        prefix=path.name + ".", suffix=".tmp", dir=str(path.parent)
-    )
+    fd = -1
+    tmp_name = ""
     try:
+        fd, tmp_name = tempfile.mkstemp(
+            prefix=path.name + ".", suffix=".tmp", dir=str(path.parent)
+        )
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             json.dump(record, fh, ensure_ascii=False)
+            fd = -1  # fdopen took ownership
         os.replace(tmp_name, path)
+        tmp_name = ""
     finally:
-        # Best-effort cleanup of the temp file on both success (already moved
-        # away — unlink 404s, swallowed) and failure (real leftover removed).
-        try:
-            os.unlink(tmp_name)
-        except OSError:
-            pass
+        if fd != -1:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+        if tmp_name:
+            try:
+                os.unlink(tmp_name)
+            except OSError:
+                pass
 
 
 def read_cache() -> Optional[Dict[str, Any]]:
