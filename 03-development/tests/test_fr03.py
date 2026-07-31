@@ -1026,6 +1026,59 @@ def test_taskq_executor_run_all_is_noop_without_pending_tasks(taskq_home):
     )
 
 
+def test_taskq_executor_run_all_rejects_when_breaker_open(taskq_home, monkeypatch):
+    """run_all returns EXIT_BREAKER_OPEN while the breaker is OPEN.
+
+    Coverage pin for executor.py L455-L461: SPEC.md#L113 — during OPEN
+    any `run` (including the batch path) is rejected immediately with
+    exit 3 + 'breaker open' on stderr, and no subprocess is spawned.
+    """
+    from taskq_plus.service.executor import (
+        EXIT_BREAKER_OPEN,
+        run_all,
+    )
+    from taskq_plus.storage.task_store import find_by_id
+
+    # Long cooldown so the breaker cannot transition out of OPEN during the test.
+    monkeypatch.setenv("TASKQ_BREAKER_COOLDOWN", "3600")
+    monkeypatch.setenv("TASKQ_BREAKER_THRESHOLD", "1")
+
+    # Pre-seed breaker.json as OPEN with opened_at = now (real wall-clock).
+    prior = _with_home(taskq_home)
+    try:
+        write_breaker(
+            {
+                "version": 1,
+                "state": STATE_OPEN,
+                "consecutive_failures": 1,
+                "opened_at": time.time(),
+            }
+        )
+        # A pending task exists — but the OPEN breaker must reject the batch
+        # BEFORE any subprocess is spawned.
+        _seed_pending(taskq_home, task_id="would_run", command="echo hi")
+
+        captured_stderr = io.StringIO()
+        with redirect_stderr(captured_stderr):
+            cli_exit = run_all()
+    finally:
+        _restore_home(prior)
+
+    assert cli_exit == EXIT_BREAKER_OPEN, (
+        f"while breaker OPEN: run_all must exit {EXIT_BREAKER_OPEN}, got {cli_exit}"
+    )
+    stderr_text = captured_stderr.getvalue().lower()
+    assert "breaker open" in stderr_text, (
+        f"expected 'breaker open' on stderr, got {captured_stderr.getvalue()!r}"
+    )
+    # And the pending task MUST NOT have been executed (still 'pending').
+    rec = find_by_id("would_run")
+    assert rec["status"] == "pending", (
+        f"OPEN breaker must not execute the batch — task stays pending, "
+        f"got {rec['status']!r}"
+    )
+
+
 # ---- executor.py — FR-07 plugin_error audit emission ---------------------
 def test_taskq_executor_emit_plugin_errors_writes_one_event_per_failure(taskq_home):
     """_emit_plugin_errors appends a plugin_error audit event per PluginFailure."""
