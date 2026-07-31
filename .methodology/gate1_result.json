@@ -1,7 +1,7 @@
 {
   "gate": 1,
-  "phase": 4,
-  "fr_id": "FR-04",
+  "phase": 5,
+  "fr_id": "FR-02",
   "overall_score": 100.0,
   "quality_complete": true,
   "rounds_used": 1,
@@ -14,18 +14,18 @@
     "type_safety": {
       "score": 100.0,
       "threshold": 100,
-      "tool_evidence": "{\"version\": \"1.1.409\", \"time\": \"1785437509445\", \"generalDiagnostics\": [], \"summary\": {\"filesAnalyzed\": 23, \"errorCount\": 0, \"warningCount\": 0, \"informationCount\": 0, \"timeInSec\": 0.683}}"
+      "tool_evidence": "{\"version\": \"1.1.409\", \"time\": \"1785495209643\", \"generalDiagnostics\": [], \"summary\": {\"filesAnalyzed\": 23, \"errorCount\": 0, \"warningCount\": 0, \"informationCount\": 0, \"timeInSec\": 0.729}}"
     },
     "test_coverage": {
       "score": 100.0,
       "threshold": 100,
-      "tests_passed": 30,
+      "tests_passed": 49,
       "tests_failed": 0,
       "tests_skipped": 0,
-      "tool_evidence": "30 passed in 0.27s. Coverage: percent_covered=100.0, missing_lines=0, covered_lines=132/132. Required tests test_fr04_a, test_fr04_b, test_fr04_c, test_fr04_d all present and passing."
+      "tool_evidence": "============================== 49 passed in 5.44s =============================="
     }
   },
-  "enforcer_sha": "0d9aa16f8ee8c25c4d7f8a9b3cb88dace506e2c9",
+  "enforcer_sha": "5355f2276f4478023efcd8b27804db5f4c87a4c5",
   "composite_score": 100.0,
   "verdict": "PASS",
   "passed": true
