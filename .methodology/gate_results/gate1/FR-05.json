@@ -1,6 +1,6 @@
 {
   "gate": 1,
-  "phase": 5,
+  "phase": 7,
   "fr_id": "FR-05",
   "overall_score": 100.0,
   "quality_complete": true,
@@ -9,12 +9,12 @@
     "linting": {
       "score": 100.0,
       "threshold": 100,
-      "tool_evidence": "All checks passed!\n"
+      "tool_evidence": "All checks passed!"
     },
     "type_safety": {
       "score": 100.0,
       "threshold": 100,
-      "tool_evidence": "{\"version\":\"1.1.409\",\"time\":\"1785500514074\",\"generalDiagnostics\":[],\"summary\":{\"filesAnalyzed\":23,\"errorCount\":0,\"warningCount\":0,\"informationCount\":0,\"timeInSec\":0.69}}"
+      "tool_evidence": "{\"version\": \"1.1.409\", \"time\": \"1785523672491\", \"generalDiagnostics\": [], \"summary\": {\"filesAnalyzed\": 23, \"errorCount\": 0, \"warningCount\": 0, \"informationCount\": 0, \"timeInSec\": 0.699}}"
     },
     "test_coverage": {
       "score": 100.0,
@@ -22,10 +22,10 @@
       "tests_passed": 115,
       "tests_failed": 0,
       "tests_skipped": 0,
-      "tool_evidence": "============================= test session starts ==============================\nplatform darwin -- Python 3.11.15, pytest-8.4.2, pluggy-1.6.0\nrootdir: /Users/johnny/projects/taskq-plus\ncollected 115 items\n\n03-development/tests/test_fr05.py ...................................... [ 33%]\n........................................................................ [ 95%]\n.....                                                                    [100%]\n\n============================= 115 passed in 3.66s ==============================\n\nCoverage: cli/commands.py 280/280 (100%), cli/main.py 221/221 (100%) — total 501 statements, 100%"
+      "tool_evidence": "============================= test session starts ==============================\nplatform darwin -- Python 3.11.15, pytest-9.0.3, pluggy-1.6.0\nrootdir: /Users/johnny/projects/taskq-plus\ncollected 115 items\n\n03-development/tests/test_fr05.py ...................................... [ 33%]\n........................................................................ [ 95%]\n.....                                                                    [100%]\n\n============================= 115 passed in 3.72s ==============================\nCoverage: 100% (501/501 statements) on cli/main.py, cli/commands.py, __main__.py"
     }
   },
-  "enforcer_sha": "b45cf041380596b7cfaaf63fa12c7a7502a580cd",
+  "enforcer_sha": "82685731fccad3bbde277120813aea546dc63a8c",
   "composite_score": 100.0,
   "verdict": "PASS",
   "passed": true
