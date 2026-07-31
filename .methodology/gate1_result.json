@@ -25,6 +25,7 @@
       "tool_evidence": "============================= test session starts ==============================\nplatform darwin -- Python 3.11.15, pytest-8.4.2, pluggy-1.6.0\ncollected 30 items\n\n03-development/tests/test_fr04.py .............................. [100%]\n\n============================== 30 passed in 0.29s ==============================\ncoverage totals: percent_covered=100.0, missing_lines=0, spec_cov_pct=100 (4/4 required tests exist)"
     }
   },
+  "enforcer_sha": "82685731fccad3bbde277120813aea546dc63a8c",
   "composite_score": 100.0,
   "verdict": "PASS",
   "passed": true
