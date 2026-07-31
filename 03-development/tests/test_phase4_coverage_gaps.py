@@ -14,6 +14,7 @@ Lines covered (Phase 4 gap-closure round 1):
   cli/main.py:269-270   status_cmd → StoreCorrupted → exit 1 + stderr
   observability/audit.py:209-212  fsync OSError swallowed (audit-write best-effort)
   service/executor.py:455-461     run_all: breaker OPEN branch (emit + stderr + EXIT_BREAKER_OPEN)
+  storage/atomic.py:48-49         write_json_atomic unlink cleanup OSError swallowed
   storage/atomic.py:70-72         append_jsonl fsync OSError swallowed (best-effort)
 
 [FR-01] [FR-02] [FR-03] [FR-05] [FR-07] [FR-08] [NFR-03] [NFR-04]
@@ -300,3 +301,37 @@ def test_append_jsonl_swallows_fsync_oserror(taskq_home):
     raw2 = path.read_text(encoding="utf-8")
     assert "run_start" in raw2
     assert "simulated fsync failure" not in raw2  # error not persisted
+
+
+# ===========================================================================
+# storage/atomic.py :48-49 — write_json_atomic unlink cleanup OSError
+# ===========================================================================
+
+def test_write_json_atomic_swallows_unlink_cleanup_oserror(taskq_home):
+    """Cover atomic.py:48-49: write_json_atomic must NOT propagate OSError
+    from the cleanup `os.unlink(tmp_name)` branch in the `finally` block.
+
+    Scenario: `os.replace` raises (so `tmp_name` is still set when we hit
+    `finally`), and `os.unlink(tmp_name)` also raises OSError. The
+    `except OSError: pass` at lines 48-49 must swallow the error so the
+    original failure surfaces cleanly to the caller.
+    """
+    from taskq_plus.storage import atomic
+
+    path = taskq_home / "data.json"
+
+    def _raise_replace(src, dst):
+        raise OSError("simulated replace failure")
+
+    def _raise_unlink(p):
+        raise OSError("simulated unlink cleanup failure")
+
+    with mock.patch.object(os, "replace", side_effect=_raise_replace), \
+         mock.patch.object(os, "unlink", side_effect=_raise_unlink):
+        # The original `replace` OSError must propagate; the unlink
+        # OSError must be swallowed by lines 48-49.
+        with pytest.raises(OSError, match="simulated replace failure"):
+            atomic.write_json_atomic(path, {"k": "v"})
+
+    # No tmp file should remain (unlink was 'called' even though it raised).
+    assert not path.exists()

@@ -2,7 +2,7 @@
 
 **Checkpoint**: `P4-pre-gate3-20260731`  
 **Phase**: P4 — Testing  
-**Generated**: 2026-07-31T02:36:51Z
+**Generated**: 2026-07-31T03:02:37Z
 
 > ⚠️  **開始下一個工作階段前，請先執行 `/compact` 壓縮上下文**，再從「接下來的工作」繼續。
 
@@ -129,18 +129,19 @@ All 8 FR(s) Gate 1 re-eval PASS [FR-01,FR-02,FR-03,FR-04,FR-05,…+3]. Gate 3 (1
   - ? / gate3-verify-r1: **complete**
 
 **Recently Committed Files:**
+  - `.methodology/state.json`
+  - `.methodology/trace/attestation.json`
+  - `HANDOVER.md`
   - `.methodology/crg_baseline_p4.json`
   - `.methodology/decision_logs/2026-07-31/GATE_4_8c2c458f.yaml`
   - `.methodology/effort_metrics.db`
   - `.methodology/gate3_result.json`
   - `.methodology/gate_timestamps.jsonl`
-  - `.methodology/state.json`
   - `00-summary/Phase4_STAGE_PASS.md`
   - `03-development/src/taskq_plus/storage/atomic.py`
   - `03-development/src/taskq_plus/storage/breaker_store.py`
   - `03-development/src/taskq_plus/storage/cache_store.py`
   - `03-development/src/taskq_plus/storage/task_store.py`
-  - `HANDOVER.md`
   - `.methodology/bug_hunt_report.json`
   - `.methodology/decision_logs/2026-07-31/GATE_4_7f553af8.yaml`
   - `.methodology/decision_logs/2026-07-31/GATE_4_926a4e22.yaml`
@@ -148,7 +149,6 @@ All 8 FR(s) Gate 1 re-eval PASS [FR-01,FR-02,FR-03,FR-04,FR-05,…+3]. Gate 3 (1
   - `.methodology/decision_logs/2026-07-31/GATE_4_a94e3d41.yaml`
   - `.methodology/decision_logs/2026-07-31/GATE_4_db388235.yaml`
   - `.methodology/harness_config.json`
-  - `.methodology/lessons/6770a594717d.md`
 
 ## 接下來的工作
 

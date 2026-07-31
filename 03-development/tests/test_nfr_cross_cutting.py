@@ -437,7 +437,6 @@ def test_nfr02_c(taskq_home, monkeypatch):  # NFR-02 (plugin path allowlist)
     plugins_dir = taskq_home / "plugins"
     plugins_dir.mkdir()
     monkeypatch.setenv("TASKQ_PLUGINS", str(plugins_dir))
-    proc = _run_cli(["plugins"], taskq_home)
     # The CLI lists plugins (no plugins → empty); the allowlist regex is
     # tested directly via the loader import.
     from taskq_plus.service.plugins import PLUGIN_NAME_RE
@@ -698,7 +697,7 @@ def test_nfr07_b():  # NFR-07 (runtime dep pinning)
         if "==" not in s and "~=" not in s:
             unpinned.append(s)
     assert unpinned == [], (
-        f"unpinned runtime deps: " + ", ".join(unpinned[:3])
+        "unpinned runtime deps: " + ", ".join(unpinned[:3])
     )
 
 

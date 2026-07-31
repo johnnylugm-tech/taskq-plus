@@ -1167,7 +1167,6 @@ def test_fr02_run_with_retry_retries_then_succeeds(taskq_home, monkeypatch):
     # bail early.
     _seed_pending(taskq_home, task_id="flips", command="true")
 
-    real_run = exec_mod.run
     call_count = {"n": 0}
 
     def _flaky(task_id: str) -> int:

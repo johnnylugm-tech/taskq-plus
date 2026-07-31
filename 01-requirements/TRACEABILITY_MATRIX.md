@@ -16,7 +16,7 @@
 | Code Coverage | 100.0% | 100% |
 | Test Coverage | 100.0% | 100% |
 | Verification Rate | 100.0% | 100% |
-| Total Links | 57 | — |
+| Total Links | 77 | — |
 
 ### ASPICE SWE.3 Compliance
 
@@ -30,14 +30,14 @@
 
 | Requirement | Status | Code Files | Test Files | SAD Module |
 |-------------|--------|------------|------------|------------|
-| FR-01 | verified | 03-development/src/taskq_plus/__init__.py, 03-development/src/taskq_plus/cli/__init__.py, 03-development/src/taskq_plus/cli/commands.py (+5) | tests/test_fr01.py | — |
-| FR-02 | verified | 03-development/src/taskq_plus/cli/commands.py, 03-development/src/taskq_plus/models/errors.py, 03-development/src/taskq_plus/service/__init__.py (+1) | tests/test_fr02.py | — |
-| FR-03 | verified | 03-development/src/taskq_plus/cli/commands.py, 03-development/src/taskq_plus/service/breaker.py, 03-development/src/taskq_plus/service/executor.py (+2) | tests/test_fr03.py | — |
+| FR-01 | verified | 03-development/src/taskq_plus/__init__.py, 03-development/src/taskq_plus/cli/__init__.py, 03-development/src/taskq_plus/cli/commands.py (+6) | tests/test_fr01.py, tests/test_phase4_coverage_gaps.py | — |
+| FR-02 | verified | 03-development/src/taskq_plus/cli/commands.py, 03-development/src/taskq_plus/models/errors.py, 03-development/src/taskq_plus/service/__init__.py (+3) | tests/test_bug_hunt_repro.py, tests/test_fr02.py, tests/test_phase4_coverage_gaps.py | — |
+| FR-03 | verified | 03-development/src/taskq_plus/cli/commands.py, 03-development/src/taskq_plus/service/breaker.py, 03-development/src/taskq_plus/service/executor.py (+4) | tests/test_bug_hunt_repro.py, tests/test_fr03.py, tests/test_phase4_coverage_gaps.py | — |
 | FR-04 | verified | 03-development/src/taskq_plus/cli/commands.py, 03-development/src/taskq_plus/service/cache.py, 03-development/src/taskq_plus/service/executor.py (+1) | tests/test_fr04.py | — |
-| FR-05 | verified | 03-development/src/taskq_plus/__main__.py, 03-development/src/taskq_plus/cli/commands.py, 03-development/src/taskq_plus/cli/main.py (+3) | tests/test_fr05.py | — |
+| FR-05 | verified | 03-development/src/taskq_plus/__main__.py, 03-development/src/taskq_plus/cli/commands.py, 03-development/src/taskq_plus/cli/main.py (+4) | tests/test_fr05.py, tests/test_phase4_coverage_gaps.py | — |
 | FR-06 | verified | 03-development/src/taskq_plus/cli/commands.py, 03-development/src/taskq_plus/service/dag.py, 03-development/src/taskq_plus/service/executor.py (+1) | tests/test_fr06.py | — |
-| FR-07 | verified | 03-development/src/taskq_plus/cli/commands.py, 03-development/src/taskq_plus/cli/main.py, 03-development/src/taskq_plus/service/executor.py (+1) | tests/test_fr07.py | — |
-| FR-08 | verified | 03-development/src/taskq_plus/cli/commands.py, 03-development/src/taskq_plus/cli/main.py, 03-development/src/taskq_plus/observability/__init__.py (+3) | tests/test_fr08.py | — |
+| FR-07 | verified | 03-development/src/taskq_plus/cli/commands.py, 03-development/src/taskq_plus/cli/main.py, 03-development/src/taskq_plus/service/executor.py (+3) | tests/test_bug_hunt_repro.py, tests/test_fr07.py, tests/test_phase4_coverage_gaps.py | — |
+| FR-08 | verified | 03-development/src/taskq_plus/cli/commands.py, 03-development/src/taskq_plus/cli/main.py, 03-development/src/taskq_plus/observability/__init__.py (+5) | tests/test_bug_hunt_repro.py, tests/test_fr08.py, tests/test_phase4_coverage_gaps.py | — |
 <!-- AUTO-GEN:END -->
 
 
@@ -45,16 +45,16 @@
 
 | NFR ID | Test Coverage | Status |
 |--------|--------------|--------|
-| NFR-01 | test_fr06.py | VERIFIED |
-| NFR-02 | test_fr01.py, test_fr02.py, test_fr05.py, test_fr07.py | VERIFIED |
-| NFR-03 | test_fr02.py, test_fr03.py, test_fr04.py, test_fr05.py, test_fr06.py, test_fr07.py, test_phase3_exit_coverage.py | VERIFIED |
-| NFR-04 | test_fr05.py, test_fr08.py, test_phase3_exit_coverage.py | VERIFIED |
-| NFR-05 | test_fr01.py, test_fr05.py, test_fr06.py, test_fr07.py, test_fr08.py | VERIFIED |
-| NFR-06 | test_phase3_exit_coverage.py | VERIFIED |
-| NFR-07 | — | PENDING |
-| NFR-08 | — | PENDING |
-| NFR-09 | test_fr05.py, test_fr06.py, test_fr07.py, test_fr08.py | VERIFIED |
-| NFR-10 | test_fr05.py, test_fr06.py, test_fr07.py, test_fr08.py | VERIFIED |
-| NFR-11 | — | PENDING |
-| NFR-12 | test_fr05.py, test_fr06.py | VERIFIED |
+| NFR-01 | test_fr06.py, test_nfr_cross_cutting.py | VERIFIED |
+| NFR-02 | test_bug_hunt_repro.py, test_fr01.py, test_fr02.py, test_fr05.py, test_fr07.py, test_nfr_cross_cutting.py | VERIFIED |
+| NFR-03 | test_bug_hunt_repro.py, test_fr01.py, test_fr02.py, test_fr03.py, test_fr04.py, test_fr05.py, test_fr06.py, test_fr07.py, test_nfr_cross_cutting.py, test_phase3_exit_coverage.py, test_phase4_coverage_gaps.py | VERIFIED |
+| NFR-04 | test_bug_hunt_repro.py, test_fr01.py, test_fr05.py, test_fr08.py, test_nfr_cross_cutting.py, test_phase3_exit_coverage.py, test_phase4_coverage_gaps.py | VERIFIED |
+| NFR-05 | test_fr01.py, test_fr05.py, test_fr06.py, test_fr07.py, test_fr08.py, test_nfr_cross_cutting.py | VERIFIED |
+| NFR-06 | test_nfr_cross_cutting.py, test_phase3_exit_coverage.py | VERIFIED |
+| NFR-07 | test_nfr_cross_cutting.py | VERIFIED |
+| NFR-08 | test_nfr_cross_cutting.py | VERIFIED |
+| NFR-09 | test_fr05.py, test_fr06.py, test_fr07.py, test_fr08.py, test_nfr_cross_cutting.py | VERIFIED |
+| NFR-10 | test_fr05.py, test_fr06.py, test_fr07.py, test_fr08.py, test_nfr_cross_cutting.py | VERIFIED |
+| NFR-11 | test_nfr_cross_cutting.py | VERIFIED |
+| NFR-12 | test_fr05.py, test_fr06.py, test_nfr_cross_cutting.py | VERIFIED |
 | NFR-99 | — | PENDING |
