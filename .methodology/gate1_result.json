@@ -1,7 +1,7 @@
 {
   "gate": 1,
   "phase": 5,
-  "fr_id": "FR-02",
+  "fr_id": "FR-03",
   "overall_score": 100.0,
   "quality_complete": true,
   "rounds_used": 1,
@@ -9,20 +9,20 @@
     "linting": {
       "score": 100.0,
       "threshold": 100,
-      "tool_evidence": "All checks passed!"
+      "tool_evidence": "All checks passed!\n"
     },
     "type_safety": {
       "score": 100.0,
       "threshold": 100,
-      "tool_evidence": "{\"version\": \"1.1.409\", \"time\": \"1785495209643\", \"generalDiagnostics\": [], \"summary\": {\"filesAnalyzed\": 23, \"errorCount\": 0, \"warningCount\": 0, \"informationCount\": 0, \"timeInSec\": 0.729}}"
+      "tool_evidence": "{\"version\": \"1.1.409\", \"time\": \"1785495326992\", \"generalDiagnostics\": [], \"summary\": {\"filesAnalyzed\": 23, \"errorCount\": 0, \"warningCount\": 0, \"informationCount\": 0, \"timeInSec\": 0.727}}"
     },
     "test_coverage": {
       "score": 100.0,
       "threshold": 100,
-      "tests_passed": 49,
+      "tests_passed": 32,
       "tests_failed": 0,
       "tests_skipped": 0,
-      "tool_evidence": "============================== 49 passed in 5.44s =============================="
+      "tool_evidence": "============================= test session starts ==============================\nplatform darwin -- Python 3.11.15, pytest-8.4.2, pluggy-1.6.0\ncollected 32 items\n\n03-development/tests/test_fr03.py ................................       [100%]\n\n============================== 32 passed in 4.39s ==============================\ncoverage totals: covered_lines=281, num_statements=284, percent_covered=98.94"
     }
   },
   "enforcer_sha": "5355f2276f4478023efcd8b27804db5f4c87a4c5",
