@@ -1,6 +1,6 @@
 {
   "gate": 1,
-  "phase": 5,
+  "phase": 7,
   "fr_id": "FR-01",
   "overall_score": 100.0,
   "quality_complete": true,
@@ -9,12 +9,12 @@
     "linting": {
       "score": 100.0,
       "threshold": 100,
-      "tool_evidence": "All checks passed!\n"
+      "tool_evidence": "All checks passed!"
     },
     "type_safety": {
       "score": 100.0,
       "threshold": 100,
-      "tool_evidence": "{\"version\": \"1.1.409\", \"time\": \"1785499778489\", \"generalDiagnostics\": [], \"summary\": {\"filesAnalyzed\": 23, \"errorCount\": 0, \"warningCount\": 0, \"informationCount\": 0, \"timeInSec\": 0.692}}"
+      "tool_evidence": "{\"version\": \"1.1.409\", \"time\": \"1785523217836\", \"generalDiagnostics\": [], \"summary\": {\"filesAnalyzed\": 23, \"errorCount\": 0, \"warningCount\": 0, \"informationCount\": 0, \"timeInSec\": 0.747}}"
     },
     "test_coverage": {
       "score": 100.0,
@@ -22,10 +22,10 @@
       "tests_passed": 140,
       "tests_failed": 0,
       "tests_skipped": 0,
-      "tool_evidence": "============================= test session starts ==============================\nplatform darwin -- Python 3.11.15, pytest-8.4.2, pluggy-1.6.0\nbenchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)\nrootdir: /Users/johnny/projects/taskq-plus\nplugins: benchmark-5.2.3, cov-7.1.0, anyio-4.14.2, hypothesis-6.164.0\ncollected 140 items\n\n03-development/tests/test_fr01.py ...................................... [ 27%]\n........................................................................ [ 78%]\n..............................                                           [100%]\n\n============================= 140 passed in 1.05s ==============================\n"
+      "tool_evidence": "============================== test session starts ============================== platform darwin -- Python 3.11.15, pytest-8.4.2 collected 140 items 03-development/tests/test_fr01.py ...................................... [ 27%] ........................................................................ [ 78%] ..............................                                           [100%] ============================== 140 passed in 1.11s ============================== coverage totals: percent_covered=100.0, missing_lines=0, num_statements=389, covered_lines=389"
     }
   },
-  "enforcer_sha": "b45cf041380596b7cfaaf63fa12c7a7502a580cd",
+  "enforcer_sha": "82685731fccad3bbde277120813aea546dc63a8c",
   "composite_score": 100.0,
   "verdict": "PASS",
   "passed": true
