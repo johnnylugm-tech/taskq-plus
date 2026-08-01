@@ -1,0 +1,7 @@
+# taskq-plus TEST-ONLY dependencies (not part of the NFR-07.a runtime license
+# allowlist in 03-development/requirements.txt: hypothesis is MPL-2.0, which
+# falls outside {MIT, BSD-2-Clause, BSD-3-Clause, Apache-2.0}). Used only by
+# 03-development/tests/test_phase4_property_specs.py (property-based tests);
+# never imported by 03-development/src. Pinned == for CI/local reproducibility,
+# matching the pinning convention in requirements.txt and harness/requirements.txt.
+hypothesis==6.164.0

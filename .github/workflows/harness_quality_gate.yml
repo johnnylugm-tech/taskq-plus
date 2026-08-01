@@ -32,6 +32,19 @@ jobs:
           pip install -r harness/requirements.txt || true
           pip install pyyaml 2>/dev/null || true
 
+      - name: Install project dependencies (runtime + test-only, if present)
+        # harness/requirements.txt only installs the HARNESS tool's own deps
+        # (pytest, mypy, ruff, ...) — it never installs the target project's
+        # own runtime or test-only deps. run-phase's traceability PRE-FLIGHT
+        # actually executes the project's pytest suite (test_suite_run.py),
+        # so a test file importing a project-only test dependency (e.g.
+        # hypothesis — see 03-development/requirements-test.txt) fails to
+        # collect without this. Guarded so it's a no-op for phases/projects
+        # without these files.
+        run: |
+          [ -f 03-development/requirements.txt ] && pip install -r 03-development/requirements.txt || true
+          [ -f 03-development/requirements-test.txt ] && pip install -r 03-development/requirements-test.txt || true
+
       # JS/TS target projects (state.json language) need node + the pinned
       # devDependencies — gate commands use `npx --no-install` and fail loudly
       # without them. No-op for python projects.
@@ -454,6 +467,12 @@ jobs:
 
       - name: Install harness dependencies
         run: pip install -r harness/requirements.txt || true
+
+      - name: Install project dependencies (runtime + test-only, if present)
+        # (same rationale as gate-check job's "Install project dependencies" step)
+        run: |
+          [ -f 03-development/requirements.txt ] && pip install -r 03-development/requirements.txt || true
+          [ -f 03-development/requirements-test.txt ] && pip install -r 03-development/requirements-test.txt || true
 
       - name: Detect phase
         id: phase
